@@ -1,0 +1,12 @@
+{
+  "schema_version": "1.0",
+  "encoder": "rate",
+  "dt_seconds": 0.001,
+  "seed": 0,
+  "n_neurons": 4,
+  "n_steps": 8,
+  "axon_encoder_git_sha": null,
+  "synthetic": true,
+  "stimulus_notes": "No continuous stimulus; schema layout smoke only.",
+  "notes": "Synthetic golden fixture for spike-viz export contract tests. Replace with axon-encoder export when cargo example lands."
+}

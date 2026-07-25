@@ -41,20 +41,21 @@ test -s docs/CHARTER.md && test -s AGENTS.md && test -s REVIEW.md && test -s REA
 | README links charter | pass |
 ```
 
-## Package + tests (when skeleton / CI land)
-
-Use these once `pyproject.toml` and tests exist. Until then, skip this section
-rather than inventing a fake suite.
+## Package + tests
 
 ```bash
-# Editable install (example; adjust when #8 lands)
-python -m pip install -e ".[dev]"
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e ".[dev]"
 
-# Unit tests — CPU always
+python -c "import spike_viz; print(spike_viz.__version__)"
 pytest -q
+```
 
-# CUDA tests must skip (not fail) without GPU
-# pytest -q -m cuda   # or project-specific marker once defined
+Golden export fixture must load:
+
+```bash
+python -c "from spike_viz import load_axon_export; print(load_axon_export('fixtures/axon-encoder/rate/tiny_synthetic').meta['encoder'])"
 ```
 
 Optional formatting / lint (only if configured in the repo):
@@ -68,6 +69,7 @@ Optional formatting / lint (only if configured in the repo):
 - CPU tests must pass on machines without NVIDIA GPUs.
 - CUDA paths: skip when no device; never require GPU for default `pytest`.
 - Failures that invent data or hide load errors are product bugs — fix, don’t weaken tests.
+- Missing fixture files must raise `SpikeIOError`, not return empty spikes.
 
 ## PR comment style
 
