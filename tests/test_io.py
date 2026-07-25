@@ -85,3 +85,49 @@ def test_load_dense_wrong_rank(tmp_path: Path) -> None:
     np.save(path, np.zeros(3))
     with pytest.raises(SpikeIOError, match=r"\[T, N\]"):
         load_dense(path)
+
+
+def test_load_dense_rejects_unicode(tmp_path: Path) -> None:
+    path = tmp_path / "u.npy"
+    np.save(path, np.array([["a", "b"], ["c", "d"]], dtype="U1"))
+    with pytest.raises(SpikeIOError, match="dtype"):
+        load_dense(path)
+
+
+def test_load_dense_rejects_complex(tmp_path: Path) -> None:
+    path = tmp_path / "c.npy"
+    np.save(path, np.zeros((2, 2), dtype=np.complex64))
+    with pytest.raises(SpikeIOError, match="dtype|real"):
+        load_dense(path)
+
+
+def test_fractional_t_rejected(tmp_path: Path) -> None:
+    path = tmp_path / "spikes.npz"
+    np.savez(
+        path,
+        t=np.array([1.9], dtype=np.float64),
+        neuron_id=np.array([0], dtype=np.int64),
+    )
+    with pytest.raises(SpikeIOError, match="integral|invalid"):
+        load_sparse(path)
+
+
+def test_integral_float_t_accepted(tmp_path: Path) -> None:
+    path = tmp_path / "spikes.npz"
+    np.savez(
+        path,
+        t=np.array([1.0], dtype=np.float64),
+        neuron_id=np.array([0], dtype=np.int64),
+    )
+    events = load_sparse(path)
+    assert events.t[0] == 1
+
+
+def test_last_write_wins_is_deterministic() -> None:
+    events = SpikeEvents(
+        t=np.array([0, 0], dtype=np.int64),
+        neuron_id=np.array([0, 0], dtype=np.int64),
+        amp=np.array([1.0, 9.0], dtype=np.float32),
+    )
+    grid = sparse_to_dense(events, n_steps=1, n_neurons=1, accumulate=False)
+    assert grid[0, 0] == 9.0

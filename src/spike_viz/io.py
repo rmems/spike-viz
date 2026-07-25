@@ -11,6 +11,8 @@ from spike_viz.events import SpikeEvents
 
 PathLike = str | Path
 
+_DENSE_ALLOWED_KINDS = frozenset({"f", "b", "i", "u"})  # float, bool, integer
+
 
 class SpikeIOError(Exception):
     """Missing or invalid spike data — fail loud, never invent spikes."""
@@ -63,6 +65,8 @@ def load_dense(path: PathLike) -> npt.NDArray[np.floating | np.bool_]:
     """Load a dense ``[T, N]`` spike grid from ``.npy`` or ``.npz``.
 
     For ``.npz``, the array must be named ``dense`` (or be the sole array).
+    Allowed dtypes: floating, boolean, or integer (integers kept as-is; floats/bool OK).
+    Complex, unicode, and object arrays are rejected.
     """
     p = _as_path(path)
     if not p.is_file():
@@ -93,6 +97,13 @@ def load_dense(path: PathLike) -> npt.NDArray[np.floating | np.bool_]:
         raise SpikeIOError(
             f"{p}: dense grid must have shape [T, N], got {arr.shape}"
         )
+    if arr.dtype.kind not in _DENSE_ALLOWED_KINDS:
+        raise SpikeIOError(
+            f"{p}: dense grid dtype must be float, bool, or integer; "
+            f"got {arr.dtype}"
+        )
+    if arr.dtype.kind == "c" or np.issubdtype(arr.dtype, np.complexfloating):
+        raise SpikeIOError(f"{p}: dense grid must be real-valued, got {arr.dtype}")
     return arr
 
 
@@ -109,7 +120,7 @@ def sparse_to_dense(
     ----------
     accumulate:
         If True, add amplitudes into bins (default). If False, last write wins
-        for duplicate (t, neuron) pairs.
+        for duplicate (t, neuron) pairs (applied in event order, deterministic).
     """
     if n_steps < 1 or n_neurons < 1:
         raise ValueError("n_steps and n_neurons must be >= 1")
@@ -134,9 +145,13 @@ def sparse_to_dense(
         if events.amp is not None
         else np.ones(len(events), dtype=np.float32)
     )
+    amp_f = amp.astype(np.float32, copy=False)
     grid = np.zeros((n_steps, n_neurons), dtype=np.float32)
     if accumulate:
-        np.add.at(grid, (t, n), amp.astype(np.float32, copy=False))
+        np.add.at(grid, (t, n), amp_f)
     else:
-        grid[t, n] = amp.astype(np.float32, copy=False)
+        # Explicit loop: NumPy advanced indexing does not guarantee last-write
+        # order when indices repeat.
+        for ti, ni, ai in zip(t, n, amp_f, strict=True):
+            grid[int(ti), int(ni)] = float(ai)
     return grid

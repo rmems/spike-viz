@@ -51,12 +51,12 @@ fixtures/axon-encoder/rate/tiny_synthetic/
 
 | Key | Type | Required | Description |
 |-----|------|----------|-------------|
-| `schema_version` | string | **yes** | Contract version; current: `"1.0"` |
+| `schema_version` | string | **yes** | Contract version; **supported: `"1.0"` only** (unknown versions fail load) |
 | `encoder` | string | **yes** | Encoder id, e.g. `"rate"`, `"poisson"` |
-| `dt_seconds` | number | **yes** | Seconds per step (provenance) |
-| `seed` | integer | **yes** | RNG seed used for the export |
-| `n_neurons` | integer | **yes** | Geometry `N` |
-| `n_steps` | integer | **yes** | Geometry `T` |
+| `dt_seconds` | number | **yes** | Seconds per step; must be finite and **> 0** |
+| `seed` | integer | **yes** | RNG seed used for the export (`>= 0`) |
+| `n_neurons` | integer | **yes** | Geometry `N`; must be **>= 1** even if spikes empty |
+| `n_steps` | integer | **yes** | Geometry `T`; must be **>= 1** even if spikes empty |
 | `axon_encoder_git_sha` | string \| null | no | Commit of axon-encoder when known |
 | `synthetic` | boolean | no | `true` if not produced by real axon-encoder |
 | `stimulus_notes` | string | no | Human notes about the stimulus |

@@ -52,6 +52,11 @@ def test_meta_missing_keys(tmp_path: Path) -> None:
         load_meta(tmp_path / "meta.json")
 
 
+def _write_case(tmp_path: Path, meta: dict, **npz_arrays: np.ndarray) -> None:
+    (tmp_path / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
+    np.savez(tmp_path / "spikes.npz", **npz_arrays)
+
+
 def test_geometry_mismatch(tmp_path: Path) -> None:
     meta = {
         "schema_version": "1.0",
@@ -61,11 +66,72 @@ def test_geometry_mismatch(tmp_path: Path) -> None:
         "n_neurons": 2,
         "n_steps": 2,
     }
-    (tmp_path / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
-    np.savez(
-        tmp_path / "spikes.npz",
+    _write_case(
+        tmp_path,
+        meta,
         t=np.array([10], dtype=np.int64),
         neuron_id=np.array([0], dtype=np.int64),
     )
     with pytest.raises(SpikeIOError, match="out of range"):
         load_axon_export(tmp_path)
+
+
+def test_zero_geometry_rejected_even_if_empty_spikes(tmp_path: Path) -> None:
+    meta = {
+        "schema_version": "1.0",
+        "encoder": "rate",
+        "dt_seconds": 0.001,
+        "seed": 0,
+        "n_neurons": 0,
+        "n_steps": 2,
+    }
+    _write_case(
+        tmp_path,
+        meta,
+        t=np.array([], dtype=np.int64),
+        neuron_id=np.array([], dtype=np.int64),
+    )
+    with pytest.raises(SpikeIOError, match="n_neurons"):
+        load_axon_export(tmp_path)
+
+
+def test_bad_dt_seconds(tmp_path: Path) -> None:
+    meta = {
+        "schema_version": "1.0",
+        "encoder": "rate",
+        "dt_seconds": 0.0,
+        "seed": 0,
+        "n_neurons": 2,
+        "n_steps": 2,
+    }
+    (tmp_path / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
+    with pytest.raises(SpikeIOError, match="dt_seconds"):
+        load_meta(tmp_path / "meta.json")
+
+
+def test_unsupported_schema_version(tmp_path: Path) -> None:
+    meta = {
+        "schema_version": "banana",
+        "encoder": "rate",
+        "dt_seconds": 0.001,
+        "seed": 0,
+        "n_neurons": 2,
+        "n_steps": 2,
+    }
+    (tmp_path / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
+    with pytest.raises(SpikeIOError, match="unsupported schema_version"):
+        load_meta(tmp_path / "meta.json")
+
+
+def test_meta_wrong_types_raise_spike_io_error(tmp_path: Path) -> None:
+    meta = {
+        "schema_version": "1.0",
+        "encoder": "rate",
+        "dt_seconds": 0.001,
+        "seed": "nope",
+        "n_neurons": 2,
+        "n_steps": 2,
+    }
+    (tmp_path / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
+    with pytest.raises(SpikeIOError, match="seed"):
+        load_meta(tmp_path / "meta.json")
