@@ -61,7 +61,7 @@ def load_sparse(path: PathLike) -> SpikeEvents:
         raise SpikeIOError(f"{p}: invalid sparse arrays: {exc}") from exc
 
 
-def load_dense(path: PathLike) -> npt.NDArray[np.floating | np.bool_]:
+def load_dense(path: PathLike) -> npt.NDArray[np.floating | np.bool_ | np.integer]:
     """Load a dense ``[T, N]`` spike grid from ``.npy`` or ``.npz``.
 
     For ``.npz``, the array must be named ``dense`` (or be the sole array).
@@ -97,13 +97,13 @@ def load_dense(path: PathLike) -> npt.NDArray[np.floating | np.bool_]:
         raise SpikeIOError(
             f"{p}: dense grid must have shape [T, N], got {arr.shape}"
         )
+    if arr.dtype.kind == "c" or np.issubdtype(arr.dtype, np.complexfloating):
+        raise SpikeIOError(f"{p}: dense grid must be real-valued, got {arr.dtype}")
     if arr.dtype.kind not in _DENSE_ALLOWED_KINDS:
         raise SpikeIOError(
             f"{p}: dense grid dtype must be float, bool, or integer; "
             f"got {arr.dtype}"
         )
-    if arr.dtype.kind == "c" or np.issubdtype(arr.dtype, np.complexfloating):
-        raise SpikeIOError(f"{p}: dense grid must be real-valued, got {arr.dtype}")
     return arr
 
 

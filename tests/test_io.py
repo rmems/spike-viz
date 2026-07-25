@@ -97,7 +97,7 @@ def test_load_dense_rejects_unicode(tmp_path: Path) -> None:
 def test_load_dense_rejects_complex(tmp_path: Path) -> None:
     path = tmp_path / "c.npy"
     np.save(path, np.zeros((2, 2), dtype=np.complex64))
-    with pytest.raises(SpikeIOError, match="dtype|real"):
+    with pytest.raises(SpikeIOError, match=r"dtype|real"):
         load_dense(path)
 
 
@@ -108,7 +108,7 @@ def test_fractional_t_rejected(tmp_path: Path) -> None:
         t=np.array([1.9], dtype=np.float64),
         neuron_id=np.array([0], dtype=np.int64),
     )
-    with pytest.raises(SpikeIOError, match="integral|invalid"):
+    with pytest.raises(SpikeIOError, match=r"integral|invalid"):
         load_sparse(path)
 
 

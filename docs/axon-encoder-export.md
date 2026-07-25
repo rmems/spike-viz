@@ -52,7 +52,7 @@ fixtures/axon-encoder/rate/tiny_synthetic/
 | Key | Type | Required | Description |
 |-----|------|----------|-------------|
 | `schema_version` | string | **yes** | Contract version; **supported: `"1.0"` only** (unknown versions fail load) |
-| `encoder` | string | **yes** | Encoder id, e.g. `"rate"`, `"poisson"` |
+| `encoder` | non-empty string | **yes** | Encoder id, e.g. `"rate"`, `"poisson"` |
 | `dt_seconds` | number | **yes** | Seconds per step; must be finite and **> 0** |
 | `seed` | integer | **yes** | RNG seed used for the export (`>= 0`) |
 | `n_neurons` | integer | **yes** | Geometry `N`; must be **>= 1** even if spikes empty |
