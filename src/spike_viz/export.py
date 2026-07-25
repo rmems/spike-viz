@@ -92,7 +92,13 @@ def load_meta(path: PathLike) -> dict[str, Any]:
     dt = meta["dt_seconds"]
     if isinstance(dt, bool) or not isinstance(dt, (int, float)):
         raise SpikeIOError(f"{p}: 'dt_seconds' must be a number")
-    dt_f = float(dt)
+    try:
+        dt_f = float(dt)
+    except OverflowError as exc:
+        # JSON integers larger than float can represent raise OverflowError.
+        raise SpikeIOError(
+            f"{p}: 'dt_seconds' is too large to convert to float, got {dt!r}"
+        ) from exc
     if not math.isfinite(dt_f) or dt_f <= 0.0:
         raise SpikeIOError(f"{p}: 'dt_seconds' must be finite and > 0, got {dt!r}")
 

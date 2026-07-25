@@ -135,3 +135,19 @@ def test_meta_wrong_types_raise_spike_io_error(tmp_path: Path) -> None:
     (tmp_path / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
     with pytest.raises(SpikeIOError, match="seed"):
         load_meta(tmp_path / "meta.json")
+
+
+def test_oversized_dt_seconds_is_spike_io_error(tmp_path: Path) -> None:
+    # Integer too large for float conversion → OverflowError must become SpikeIOError.
+    huge = int("9" * 400)
+    meta = {
+        "schema_version": "1.0",
+        "encoder": "rate",
+        "dt_seconds": huge,
+        "seed": 0,
+        "n_neurons": 2,
+        "n_steps": 2,
+    }
+    (tmp_path / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
+    with pytest.raises(SpikeIOError, match="dt_seconds"):
+        load_meta(tmp_path / "meta.json")

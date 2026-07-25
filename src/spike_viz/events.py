@@ -23,9 +23,11 @@ def _as_int64_indices(name: str, values: npt.ArrayLike) -> npt.NDArray[np.int64]
         # Reject fractional floats (e.g. 1.9 would become 1 under bare astype).
         if not np.all(arr == np.trunc(arr)):
             raise ValueError(f"{name} must be integral indices (got non-integer floats)")
-        # Safe range check before cast.
-        imin = np.iinfo(np.int64).min
-        if arr.size and (float(arr.min()) < imin or np.any(arr >= 2**63)):
+        # Safe range check before cast. Compare against exact integer powers of
+        # two so float64 cannot round 2**63-1 into 2**63 and pass the check.
+        if arr.size and (
+            np.any(arr >= float(2**63)) or np.any(arr < float(-(2**63)))
+        ):
             raise ValueError(f"{name} values exceed int64 range")
         return arr.astype(np.int64)
 

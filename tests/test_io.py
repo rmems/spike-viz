@@ -123,6 +123,17 @@ def test_integral_float_t_accepted(tmp_path: Path) -> None:
     assert events.t[0] == 1
 
 
+def test_float_t_at_int64_upper_boundary_rejected(tmp_path: Path) -> None:
+    path = tmp_path / "spikes.npz"
+    np.savez(
+        path,
+        t=np.array([float(2**63)], dtype=np.float64),
+        neuron_id=np.array([0], dtype=np.int64),
+    )
+    with pytest.raises(SpikeIOError, match=r"int64|invalid"):
+        load_sparse(path)
+
+
 def test_last_write_wins_is_deterministic() -> None:
     events = SpikeEvents(
         t=np.array([0, 0], dtype=np.int64),
