@@ -25,9 +25,10 @@ encoder, or silent synthetic data when load fails.
 
 ## Stack
 
-- Language: Python 3 (package layout lands with foundation issues)
-- Core deps (when skeleton lands): PyTorch; CUDA optional
-- Tests: pytest on CPU; CUDA tests must skip cleanly when no GPU
+- Language: Python 3.10+ (`src/spike_viz/` layout)
+- Core deps: `numpy`, `torch`, `pillow` — **CUDA optional** (CPU torch is fine)
+- Tests: `pytest` on CPU (`pip install -e ".[dev]"`); CUDA tests must skip cleanly when no GPU
+- Export layout: `docs/axon-encoder-export.md` + `fixtures/axon-encoder/`
 - Interactive Makie-style UI is **out of scope** (other viz repos)
 
 ## Non-negotiable rules
