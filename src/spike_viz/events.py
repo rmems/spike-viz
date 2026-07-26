@@ -8,6 +8,58 @@ import numpy as np
 import numpy.typing as npt
 
 
+def _as_int64_indices(name: str, values: npt.ArrayLike) -> npt.NDArray[np.int64]:
+    """Validate 1-D integral indices and return int64 without silent truncation."""
+    arr = np.asarray(values)
+    if arr.ndim != 1:
+        raise ValueError(f"{name} must be a 1-D array")
+
+    if arr.dtype.kind == "c" or np.issubdtype(arr.dtype, np.complexfloating):
+        raise ValueError(f"{name} must be real-valued indices")
+
+    if arr.dtype.kind == "f":
+        if not np.all(np.isfinite(arr)):
+            raise ValueError(f"{name} must be finite")
+        # Reject fractional floats (e.g. 1.9 would become 1 under bare astype).
+        if not np.all(arr == np.trunc(arr)):
+            raise ValueError(f"{name} must be integral indices (got non-integer floats)")
+        # Safe range check before cast. Compare against exact integer powers of
+        # two so float64 cannot round 2**63-1 into 2**63 and pass the check.
+        if arr.size and (
+            np.any(arr >= float(2**63)) or np.any(arr < float(-(2**63)))
+        ):
+            raise ValueError(f"{name} values exceed int64 range")
+        return arr.astype(np.int64)
+
+    if arr.dtype.kind == "u":
+        imax = np.iinfo(np.int64).max
+        if arr.size and int(arr.max()) > imax:
+            raise ValueError(f"{name} values exceed int64 range")
+        return arr.astype(np.int64)
+
+    if arr.dtype.kind in "i":
+        return arr.astype(np.int64, copy=False)
+
+    if arr.dtype.kind == "b":
+        return arr.astype(np.int64)
+
+    raise ValueError(f"{name} must be integer-valued, got dtype {arr.dtype}")
+
+
+def _as_float32_amp(values: npt.ArrayLike, n: int) -> npt.NDArray[np.float32]:
+    amp = np.asarray(values)
+    if amp.ndim != 1 or amp.shape[0] != n:
+        raise ValueError("amp must be 1-D and match t length")
+    if amp.dtype.kind == "c" or np.issubdtype(amp.dtype, np.complexfloating):
+        raise ValueError("amp must be real-valued, not complex")
+    if amp.dtype.kind not in "fib":
+        raise ValueError(f"amp must be real numeric, got dtype {amp.dtype}")
+    out = amp.astype(np.float32, copy=False)
+    if not np.all(np.isfinite(out)):
+        raise ValueError("amp must be finite")
+    return out
+
+
 @dataclass(frozen=True, slots=True)
 class SpikeEvents:
     """COO-like sparse spikes: parallel arrays of equal length.
@@ -28,21 +80,16 @@ class SpikeEvents:
     amp: npt.NDArray[np.float32] | None = None
 
     def __post_init__(self) -> None:
-        t = np.asarray(self.t)
-        neuron_id = np.asarray(self.neuron_id)
-        if t.ndim != 1 or neuron_id.ndim != 1:
-            raise ValueError("t and neuron_id must be 1-D arrays")
+        t = _as_int64_indices("t", self.t)
+        neuron_id = _as_int64_indices("neuron_id", self.neuron_id)
         if t.shape[0] != neuron_id.shape[0]:
             raise ValueError(
                 f"t length {t.shape[0]} != neuron_id length {neuron_id.shape[0]}"
             )
-        object.__setattr__(self, "t", t.astype(np.int64, copy=False))
-        object.__setattr__(self, "neuron_id", neuron_id.astype(np.int64, copy=False))
+        object.__setattr__(self, "t", t)
+        object.__setattr__(self, "neuron_id", neuron_id)
         if self.amp is not None:
-            amp = np.asarray(self.amp)
-            if amp.ndim != 1 or amp.shape[0] != t.shape[0]:
-                raise ValueError("amp must be 1-D and match t length")
-            object.__setattr__(self, "amp", amp.astype(np.float32, copy=False))
+            object.__setattr__(self, "amp", _as_float32_amp(self.amp, t.shape[0]))
 
     def __len__(self) -> int:
         return int(self.t.shape[0])

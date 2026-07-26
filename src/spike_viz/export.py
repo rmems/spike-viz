@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -24,6 +25,9 @@ REQUIRED_META_KEYS = frozenset(
     }
 )
 
+# Supported export contract versions (bump when field semantics change).
+SUPPORTED_SCHEMA_VERSIONS = frozenset({"1.0"})
+
 
 @dataclass(frozen=True, slots=True)
 class AxonExportCase:
@@ -41,6 +45,22 @@ def _as_path(path: PathLike) -> Path:
     return Path(path).expanduser().resolve()
 
 
+def _require_int(meta: dict[str, Any], key: str, path: Path) -> int:
+    if key not in meta:
+        raise SpikeIOError(f"{path}: missing required key '{key}'")
+    value = meta[key]
+    if not isinstance(value, int) or isinstance(value, bool):
+        raise SpikeIOError(f"{path}: '{key}' must be an integer")
+    return value
+
+
+def _require_positive_int(meta: dict[str, Any], key: str, path: Path) -> int:
+    value = _require_int(meta, key, path)
+    if value < 1:
+        raise SpikeIOError(f"{path}: '{key}' must be >= 1, got {value}")
+    return value
+
+
 def load_meta(path: PathLike) -> dict[str, Any]:
     """Load and validate ``meta.json`` for an export case."""
     p = _as_path(path)
@@ -51,24 +71,51 @@ def load_meta(path: PathLike) -> dict[str, Any]:
             meta = json.load(f)
     except json.JSONDecodeError as exc:
         raise SpikeIOError(f"invalid JSON in {p}: {exc}") from exc
+    except OSError as exc:
+        raise SpikeIOError(f"failed to read meta.json at {p}: {exc}") from exc
     if not isinstance(meta, dict):
         raise SpikeIOError(f"{p}: root must be a JSON object")
 
+    # Presence first — always raise SpikeIOError, never KeyError.
     missing = sorted(REQUIRED_META_KEYS - meta.keys())
     if missing:
         raise SpikeIOError(f"{p}: missing required keys: {missing}")
 
-    for key in ("n_neurons", "n_steps", "seed"):
-        if not isinstance(meta[key], int) or isinstance(meta[key], bool):
-            raise SpikeIOError(f"{p}: '{key}' must be an integer")
-    if not isinstance(meta["dt_seconds"], (int, float)) or isinstance(
-        meta["dt_seconds"], bool
-    ):
+    for key in ("n_neurons", "n_steps"):
+        _require_positive_int(meta, key, p)
+    seed = _require_int(meta, "seed", p)
+    if seed < 0:
+        raise SpikeIOError(f"{p}: 'seed' must be >= 0, got {seed}")
+
+    if "dt_seconds" not in meta:
+        raise SpikeIOError(f"{p}: missing required key 'dt_seconds'")
+    dt = meta["dt_seconds"]
+    if isinstance(dt, bool) or not isinstance(dt, (int, float)):
         raise SpikeIOError(f"{p}: 'dt_seconds' must be a number")
+    try:
+        dt_f = float(dt)
+    except OverflowError as exc:
+        # JSON integers larger than float can represent raise OverflowError.
+        raise SpikeIOError(
+            f"{p}: 'dt_seconds' is too large to convert to float, got {dt!r}"
+        ) from exc
+    if not math.isfinite(dt_f) or dt_f <= 0.0:
+        raise SpikeIOError(f"{p}: 'dt_seconds' must be finite and > 0, got {dt!r}")
+
+    if "encoder" not in meta:
+        raise SpikeIOError(f"{p}: missing required key 'encoder'")
     if not isinstance(meta["encoder"], str) or not meta["encoder"]:
         raise SpikeIOError(f"{p}: 'encoder' must be a non-empty string")
+
+    if "schema_version" not in meta:
+        raise SpikeIOError(f"{p}: missing required key 'schema_version'")
     if not isinstance(meta["schema_version"], str) or not meta["schema_version"]:
         raise SpikeIOError(f"{p}: 'schema_version' must be a non-empty string")
+    if meta["schema_version"] not in SUPPORTED_SCHEMA_VERSIONS:
+        raise SpikeIOError(
+            f"{p}: unsupported schema_version {meta['schema_version']!r}; "
+            f"supported: {sorted(SUPPORTED_SCHEMA_VERSIONS)}"
+        )
 
     return meta
 
@@ -98,7 +145,7 @@ def load_axon_export(case_dir: PathLike) -> AxonExportCase:
     meta = load_meta(meta_path)
     events = load_sparse(spikes_path)
 
-    # Bounds check against declared geometry (fail loud).
+    # Geometry already validated as >= 1 in load_meta; bounds-check events.
     n_steps = int(meta["n_steps"])
     n_neurons = int(meta["n_neurons"])
     if len(events) > 0:
