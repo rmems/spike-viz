@@ -75,7 +75,7 @@ def test_render_raster_scale_upscales_pixels() -> None:
 
 def test_render_raster_rejects_invalid_scale() -> None:
     dense = np.zeros((2, 2), dtype=np.float32)
-    for scale in (0, -1, 1.5, True, np.bool_(True)):
+    for scale in (0, -1, 1.5, True, np.bool_(1)):
         with pytest.raises(ValueError, match="scale must be an integer >= 1"):
             render_raster(dense, scale=scale)
 

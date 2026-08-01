@@ -77,9 +77,12 @@ def render_raster(
     ):
         raise ValueError(f"scale must be an integer >= 1, got {scale!r}")
 
-    frame = grid.T.astype(np.float32)  # [N, T]: rows=neuron, cols=time
+    # Suppress the overflow warning so a too-large value becomes inf and is
+    # caught below with a clear ValueError instead of a RuntimeWarning.
+    with np.errstate(over="ignore"):
+        frame = grid.T.astype(np.float32)  # [N, T]: rows=neuron, cols=time
     if not np.all(np.isfinite(frame)):
-        raise ValueError("data contains non-finite values (inf or nan)")
+        raise ValueError("data contains non-finite or out-of-range values")
 
     peak = float(frame.max()) if frame.size else 0.0
     intensity = frame / peak if peak > 0 else frame
