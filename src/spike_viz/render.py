@@ -47,7 +47,9 @@ def render_raster(
     Returns
     -------
     PIL.Image.Image
-        RGB image, width == n_steps, height == n_neurons. Background is
+        RGB image, width == ``T * scale`` and height == ``N * scale``,
+        where ``T`` and ``N`` are the time and neuron grid dimensions
+        (``n_steps`` and ``n_neurons`` for sparse input). Background is
         black; spike intensity is rendered as white, scaled so the
         brightest bin in the grid maps to full white.
     """
@@ -59,13 +61,26 @@ def render_raster(
         grid = sparse_to_dense(data, n_steps, n_neurons, accumulate=True)
     else:
         grid = np.asarray(data)
-        if grid.ndim != 2:
-            raise ValueError(f"dense data must be a 2-D [T, N] array, got shape {grid.shape}")
+        if grid.ndim != 2 or 0 in grid.shape:
+            raise ValueError(
+                f"dense data must be a non-empty 2-D [T, N] array, got shape {grid.shape}"
+            )
+        if grid.dtype.kind not in "fbiu":
+            raise ValueError(
+                f"dense data must be float, bool, or integer, got dtype {grid.dtype}"
+            )
 
-    if scale < 1:
-        raise ValueError(f"scale must be >= 1, got {scale}")
+    if (
+        isinstance(scale, (bool, np.bool_))
+        or not isinstance(scale, (int, np.integer))
+        or scale < 1
+    ):
+        raise ValueError(f"scale must be an integer >= 1, got {scale!r}")
 
     frame = grid.T.astype(np.float32)  # [N, T]: rows=neuron, cols=time
+    if not np.all(np.isfinite(frame)):
+        raise ValueError("data contains non-finite values (inf or nan)")
+
     peak = float(frame.max()) if frame.size else 0.0
     intensity = frame / peak if peak > 0 else frame
     pixels = np.clip(intensity, 0.0, 1.0)

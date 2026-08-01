@@ -71,3 +71,31 @@ def test_render_raster_scale_upscales_pixels() -> None:
     image = render_raster(dense, scale=3)
 
     assert image.size == (6, 6)
+
+
+def test_render_raster_rejects_invalid_scale() -> None:
+    dense = np.zeros((2, 2), dtype=np.float32)
+    for scale in (0, -1, 1.5, True, np.bool_(True)):
+        with pytest.raises(ValueError, match="scale must be an integer >= 1"):
+            render_raster(dense, scale=scale)
+
+
+def test_render_raster_rejects_unsupported_dense_dtype() -> None:
+    with pytest.raises(ValueError, match="float, bool, or integer"):
+        render_raster(np.array([[1 + 2j]]))
+    with pytest.raises(ValueError, match="float, bool, or integer"):
+        render_raster(np.array([["x"]]))
+
+
+def test_render_raster_rejects_non_finite_dense_values() -> None:
+    with pytest.raises(ValueError, match="non-finite"):
+        render_raster(np.array([[1.0, np.inf]], dtype=np.float64))
+    with pytest.raises(ValueError, match="non-finite"):
+        render_raster(np.array([[np.nan]], dtype=np.float64))
+
+
+def test_render_raster_rejects_empty_dense_grid() -> None:
+    with pytest.raises(ValueError, match=r"\[T, N\]"):
+        render_raster(np.zeros((0, 5), dtype=np.float32))
+    with pytest.raises(ValueError, match="non-empty"):
+        render_raster(np.zeros((5, 0), dtype=np.float32))
