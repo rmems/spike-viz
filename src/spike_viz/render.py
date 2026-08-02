@@ -58,7 +58,15 @@ def render_raster(
             raise ValueError(
                 "n_steps and n_neurons are required when data is SpikeEvents"
             )
-        grid = sparse_to_dense(data, n_steps, n_neurons, accumulate=True)
+        # axon-encoder exports polarity=False as amp=0.0; those events still
+        # represent a spike, so render them as unit amplitude to keep them
+        # from vanishing into the black background.
+        if data.amp is not None:
+            amp = np.where(data.amp == 0, np.float32(1.0), data.amp)
+            grid_data = SpikeEvents(t=data.t, neuron_id=data.neuron_id, amp=amp)
+        else:
+            grid_data = data
+        grid = sparse_to_dense(grid_data, n_steps, n_neurons, accumulate=True)
     else:
         grid = np.asarray(data)
         if grid.ndim != 2 or 0 in grid.shape:

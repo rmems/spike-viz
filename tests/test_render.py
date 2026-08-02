@@ -99,3 +99,20 @@ def test_render_raster_rejects_empty_dense_grid() -> None:
         render_raster(np.zeros((0, 5), dtype=np.float32))
     with pytest.raises(ValueError, match="non-empty"):
         render_raster(np.zeros((5, 0), dtype=np.float32))
+
+
+def test_render_raster_preserves_zero_amp_events() -> None:
+    # axon-encoder writes polarity=False as amp=0.0; those events must still
+    # appear in the raster rather than blending into the black background.
+    events = SpikeEvents(
+        t=np.array([0, 1], dtype=np.int64),
+        neuron_id=np.array([0, 1], dtype=np.int64),
+        amp=np.array([1.0, 0.0], dtype=np.float32),
+    )
+
+    image = render_raster(events, n_steps=2, n_neurons=2)
+
+    pixels = np.array(image.convert("L"))
+    assert pixels[0, 0] == 255
+    assert pixels[1, 1] == 255
+    assert np.count_nonzero(pixels) == 2
