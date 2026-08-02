@@ -142,3 +142,12 @@ def test_last_write_wins_is_deterministic() -> None:
     )
     grid = sparse_to_dense(events, n_steps=1, n_neurons=1, accumulate=False)
     assert grid[0, 0] == 9.0
+
+
+def test_spike_events_rejects_out_of_range_amp() -> None:
+    with pytest.raises(ValueError, match="amp must be finite"):
+        SpikeEvents(
+            t=np.array([0], dtype=np.int64),
+            neuron_id=np.array([0], dtype=np.int64),
+            amp=np.array([1e300], dtype=np.float64),
+        )

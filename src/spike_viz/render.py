@@ -66,7 +66,10 @@ def render_raster(
             grid_data = SpikeEvents(t=data.t, neuron_id=data.neuron_id, amp=amp)
         else:
             grid_data = data
-        grid = sparse_to_dense(grid_data, n_steps, n_neurons, accumulate=True)
+        # Suppress overflow during sparse_to_dense's float32 cast so a too-large
+        # amplitude becomes inf and is caught by the finiteness check below.
+        with np.errstate(over="ignore"):
+            grid = sparse_to_dense(grid_data, n_steps, n_neurons, accumulate=True)
     else:
         grid = np.asarray(data)
         if grid.ndim != 2 or 0 in grid.shape:

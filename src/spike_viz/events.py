@@ -54,7 +54,10 @@ def _as_float32_amp(values: npt.ArrayLike, n: int) -> npt.NDArray[np.float32]:
         raise ValueError("amp must be real-valued, not complex")
     if amp.dtype.kind not in "fib":
         raise ValueError(f"amp must be real numeric, got dtype {amp.dtype}")
-    out = amp.astype(np.float32, copy=False)
+    # Suppress the overflow warning so a too-large float64 value becomes inf
+    # and is caught by the finite check below with a clear ValueError.
+    with np.errstate(over="ignore"):
+        out = amp.astype(np.float32, copy=False)
     if not np.all(np.isfinite(out)):
         raise ValueError("amp must be finite")
     return out

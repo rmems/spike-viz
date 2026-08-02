@@ -116,3 +116,5 @@ def test_render_raster_preserves_zero_amp_events() -> None:
     assert pixels[0, 0] == 255
     assert pixels[1, 1] == 255
     assert np.count_nonzero(pixels) == 2
+
+
