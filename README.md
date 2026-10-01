@@ -35,14 +35,33 @@ pytest -q
 | [AGENTS.md](AGENTS.md) | Rules for coding agents |
 | [REVIEW.md](REVIEW.md) | Local quality gate before merge |
 
-## Quick load (export case)
+## Quickstart: fixture → raster PNG
+
+Run from the repository root after the install step above. This loads the checked-in
+golden fixture and renders one CPU raster (no GPU needed; CUDA stays optional):
 
 ```python
-from spike_viz import load_axon_export
+from pathlib import Path
+
+from spike_viz import load_axon_export, render_raster
 
 case = load_axon_export("fixtures/axon-encoder/rate/tiny_synthetic")
 print(case.meta["encoder"], len(case.events))
+
+Path("out").mkdir(exist_ok=True)  # create the output directory on a clean checkout
+render_raster(
+    case.events,
+    n_steps=case.meta["n_steps"],
+    n_neurons=case.meta["n_neurons"],
+    scale=16,  # the tiny fixture is 8 x 4 pixels; upscale so it is visible
+    out_path="out/raster.png",
+)
 ```
 
-Package renderers and hero stills land under later `v0.1` / `v0.2` issues
+This writes `out/raster.png` (time horizontal, neuron vertical). The fixture is
+synthetic and only exercises the schema; see
+[docs/axon-encoder-export.md](docs/axon-encoder-export.md) for the export contract and
+[docs/schema.md](docs/schema.md) for the spike layout.
+
+Hero stills (bloom, galleries, provenance captions) land under `v0.2` issues
 ([tracker](https://github.com/rmems/spike-viz/issues)).
