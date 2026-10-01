@@ -1,5 +1,7 @@
 # spike-viz
 
+[![CI](https://github.com/rmems/spike-viz/actions/workflows/ci.yml/badge.svg)](https://github.com/rmems/spike-viz/actions/workflows/ci.yml)
+
 PyTorch + CUDA toolkit for visualizing spiking neural network encodings and activity.
 
 **Product split:** [axon-encoder](https://github.com/Limen-Neural/axon-encoder) owns
