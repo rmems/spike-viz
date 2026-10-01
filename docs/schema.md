@@ -14,13 +14,18 @@ Parallel arrays of equal length `E` (number of events):
 | `neuron_id` | `int64` | yes | Neuron / channel index |
 | `amp` | `float32` | no | Amplitude; default **1.0** when absent |
 
-### Mapping from axon-encoder `SpikeEvent`
+### Mapping from axon-encoder `SpikeEvent` (0.5.x)
 
 | axon-encoder | spike-viz |
 |--------------|-----------|
-| `timestamp` (`u64`) | `t` |
+| `timestamp` (`TickOffset`, call-relative) → `TimeCursor::absolute(...)` | `t` |
 | `channel` (`u16`) | `neuron_id` |
 | `polarity` (`bool`) | `amp` as `1.0` / `0.0` when exported |
+
+`t` is the **absolute** encoder tick: per-call `TickOffset` values are
+normalized through a `TimeCursor` advanced once per encoder call. See
+[axon-encoder-export.md](axon-encoder-export.md) for the mapping rule and the
+`dt_seconds` sampling convention.
 
 ## Dense
 

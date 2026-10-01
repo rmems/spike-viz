@@ -2,9 +2,14 @@
 
 spike-viz side of the **export-first** bridge. Rust
 [axon-encoder](https://github.com/Limen-Neural/axon-encoder) is encoding truth;
-this document defines what files spike-viz will load. A cargo `example` or small
-export binary may live in axon-encoder later — **this issue only defines the
-contract on the spike-viz side**.
+this document defines what files spike-viz will load.
+
+Generation path: axon-encoder ships `examples/export_spike_viz.rs`, which
+writes a staging layout (`t.npy` / `neuron_id.npy` / `amp.npy` /
+`stimulus.npy` / `meta.json`); `scripts/pack_axon_export.py` in this repo
+assembles that staging into `spikes.npz` and validates the result through
+`load_axon_export`. `scripts/generate_fixtures.sh` regenerates every
+checked-in case from a pinned axon-encoder checkout.
 
 Schema details: [schema.md](schema.md). Charter: [CHARTER.md](CHARTER.md).
 
@@ -39,13 +44,53 @@ fixtures/axon-encoder/rate/tiny_synthetic/
 
 `allow_pickle` must not be required. spike-viz loads with `allow_pickle=False`.
 
-### axon-encoder field map
+### axon-encoder field map (0.5.x)
 
 | axon-encoder `SpikeEvent` | export array |
 |---------------------------|--------------|
-| `timestamp: u64` | `t` |
+| `timestamp: TickOffset` → `TimeCursor::absolute(...)` | `t` |
 | `channel: u16` | `neuron_id` |
 | `polarity: bool` | `amp` ∈ `{0.0, 1.0}` when written |
+
+#### `TickOffset` → `t` mapping
+
+Since axon-encoder 0.5, `SpikeEvent::timestamp` is a `TickOffset`: ticks
+**relative to the start of the call that emitted the spike**, never absolute.
+Exporters must normalize it through a [`TimeCursor`] advanced once per
+`encode`/`encode_step` call:
+
+```rust
+let mut cursor = TimeCursor::new(encoder.time_model());
+for step in &stimulus {
+    let out = encoder.encode_step(step);
+    for spike in &out.spikes {
+        let t = cursor.absolute(spike.timestamp); // absolute encoder tick
+    }
+    cursor.advance();
+}
+```
+
+Exporting `offset.ticks()` directly collapses every streaming spike onto
+the call-local range (`0..span_ticks`) — usually `t = 0` for instant encoders.
+`tests/` cover this regression.
+
+The encoder's `TimeModel` defines the span:
+- `TimeModel::INSTANT` (rate, population, temporal, predictive, …): one tick
+  per call; `n_steps` = number of calls.
+- `TimeModel::window(span)` (latency): each call is one presentation;
+  `n_steps` = calls × span.
+- `TimeModel::overlapping` (phase): `n_steps` must include trailing
+  `span − step` slack for the last call's offsets.
+
+#### `dt_seconds` semantics
+
+For encoders configured in physical units (e.g. `RateEncoder::try_new(..,
+dt_seconds)`), `dt_seconds` is the real tick duration reported by the
+encoder's `Timebase`. For dimensionless encoders (latency, population,
+temporal, predictive, phase) the encoder owns no physical time: `dt_seconds`
+in `meta.json` is then the **export/render sampling convention** chosen by
+the exporter — consumers should treat it as "seconds per displayed step",
+not an encoder-owned physical claim.
 
 ## `meta.json` fields
 
@@ -80,8 +125,12 @@ Missing `spikes.npz` / `meta.json` → `SpikeIOError` (not empty spikes).
 
 ## Golden fixtures policy
 
-1. Prefer real exports from a pinned `axon_encoder_git_sha` when available.
-2. Until then, **tiny synthetic** fixtures may be checked in if:
+1. Real exports from a pinned `axon_encoder_git_sha` live under
+   `fixtures/axon-encoder/<encoder>/shared_sine_v1/`, all generated from one
+   shared stimulus by `scripts/generate_fixtures.sh` (`synthetic: false`).
+   Stochastic encoders use seeded `*_with_rng` surfaces, so re-running against
+   the recorded SHA reproduces them bit-for-bit.
+2. **Tiny synthetic** fixtures may be checked in if:
    - `synthetic: true` is set in `meta.json`
    - arrays match this schema
    - they are small and deterministic
