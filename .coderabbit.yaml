@@ -1,0 +1,22 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+# Draft CodeRabbit config for rmems/spike-viz (generated locally, not pushed).
+language: en-US
+reviews:
+  profile: chill
+  request_changes_workflow: false
+  fail_commit_status: false
+  auto_review:
+    enabled: true
+    drafts: false
+  path_instructions:
+  - path: '**/*.py'
+    instructions: 'Python >=3.10 (no CI workflows yet). CI gate: local `pytest` on CPU (`pip install -e ".[dev]"`), `ruff check .`. Keep code compatible with the declared Python floor. CUDA is optional: default `pytest` must pass without an NVIDIA GPU and CUDA tests must skip cleanly. Missing or invalid spike data must raise `SpikeIOError`, never produce invented spikes.'
+  - path: fixtures/**
+    instructions: Golden export fixtures (`axon-encoder`); the loader must keep reading them.
+  tools:
+    ruff:
+      enabled: true
+    markdownlint:
+      enabled: true
+    biome:
+      enabled: false
