@@ -58,9 +58,9 @@ def render_raster(
             raise ValueError(
                 "n_steps and n_neurons are required when data is SpikeEvents"
             )
-        # axon-encoder exports polarity=False as amp=0.0; those events still
-        # represent a spike, so render them as unit amplitude to keep them
-        # from vanishing into the black background.
+        # axon-encoder exports polarity as amp=±1.0; any zero-amplitude events
+        # still represent a spike, so render them as unit amplitude to keep
+        # them from vanishing into the black background.
         if data.amp is not None:
             amp = np.where(data.amp == 0, np.float32(1.0), data.amp)
             grid_data = SpikeEvents(t=data.t, neuron_id=data.neuron_id, amp=amp)
