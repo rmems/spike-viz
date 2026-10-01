@@ -3,13 +3,9 @@
 from __future__ import annotations
 
 import pytest
+import torch
 
-try:
-    import torch
-
-    _HAS_CUDA = torch.cuda.is_available()
-except Exception:  # torch missing/broken -> treat as CPU-only host
-    _HAS_CUDA = False
+_HAS_CUDA = torch.cuda.is_available()
 
 
 def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
