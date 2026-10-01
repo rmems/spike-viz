@@ -40,3 +40,6 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+markers = [
+  "cuda: marks tests requiring an NVIDIA CUDA GPU (skipped when torch.cuda.is_available() is false)",
+]
