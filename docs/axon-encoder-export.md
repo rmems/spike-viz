@@ -50,7 +50,7 @@ fixtures/axon-encoder/rate/tiny_synthetic/
 |---------------------------|--------------|
 | `timestamp: TickOffset` → `TimeCursor::absolute(...)` | `t` |
 | `channel: u16` | `neuron_id` |
-| `polarity: bool` | `amp` ∈ `{0.0, 1.0}` when written |
+| `polarity: bool` | `amp` ∈ `{1.0, -1.0}` when written |
 
 #### `TickOffset` → `t` mapping
 
