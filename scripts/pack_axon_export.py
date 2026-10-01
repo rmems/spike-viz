@@ -45,6 +45,10 @@ def pack(staging_dir: Path, case_dir: Path) -> None:
     if not meta_path.is_file():
         raise SpikeIOError(f"{meta_path}: required staging file missing")
 
+    if not np.issubdtype(t.dtype, np.integer) or not np.all(t >= 0):
+        raise SpikeIOError(f"{staging_dir}: t.npy must be non-negative integers")
+    if not np.issubdtype(neuron_id.dtype, np.integer) or not np.all(neuron_id >= 0):
+        raise SpikeIOError(f"{staging_dir}: neuron_id.npy must be non-negative integers")
     t = np.asarray(t, dtype=np.int64)
     neuron_id = np.asarray(neuron_id, dtype=np.int64)
     if t.shape != neuron_id.shape:
@@ -53,14 +57,24 @@ def pack(staging_dir: Path, case_dir: Path) -> None:
         )
     arrays: dict[str, np.ndarray] = {"t": t, "neuron_id": neuron_id}
     if amp is not None:
+        if not np.issubdtype(amp.dtype, np.floating) and not np.issubdtype(
+            amp.dtype, np.integer
+        ):
+            raise SpikeIOError(f"{staging_dir}: amp.npy must be numeric")
         amp = np.asarray(amp, dtype=np.float32)
+        if not np.all(np.isfinite(amp)):
+            raise SpikeIOError(f"{staging_dir}: amp.npy contains non-finite values")
         if amp.shape != t.shape:
             raise SpikeIOError(
                 f"{staging_dir}: amp {amp.shape} length mismatch vs t {t.shape}"
             )
         arrays["amp"] = amp
 
-    case_dir.mkdir(parents=True, exist_ok=True)
+    # Rebuild the case directory so stale files from a previous run can't
+    # masquerade as outputs of this one (mixed provenance).
+    if case_dir.exists():
+        shutil.rmtree(case_dir)
+    case_dir.mkdir(parents=True)
     np.savez(case_dir / "spikes.npz", **arrays)
     shutil.copyfile(meta_path, case_dir / "meta.json")
     if stimulus is not None:

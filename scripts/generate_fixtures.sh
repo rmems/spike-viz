@@ -11,6 +11,10 @@
 # HEAD at generation time. Stochastic cases are reproducible because the
 # encoder draws run through seeded `*_with_rng` surfaces; re-running against
 # the same SHA produces identical fixtures.
+#
+# To pin regeneration to a specific axon-encoder commit, set
+# AXON_ENCODER_GIT_SHA to the expected SHA — the script then verifies the
+# checkout's HEAD matches it before generating.
 set -euo pipefail
 
 AXON_ENCODER_DIR="${AXON_ENCODER_DIR:?set AXON_ENCODER_DIR to an axon-encoder checkout}"
@@ -19,14 +23,21 @@ STAGING="$(mktemp -d)"
 trap 'rm -rf "$STAGING"' EXIT
 
 if [ "${AXON_ALLOW_DIRTY:-0}" != "1" ] && \
-   ! git -C "$AXON_ENCODER_DIR" diff --quiet HEAD --; then
-  echo "error: $AXON_ENCODER_DIR has uncommitted changes;" >&2
+   [ -n "$(git -C "$AXON_ENCODER_DIR" status --porcelain)" ]; then
+  echo "error: $AXON_ENCODER_DIR has uncommitted or untracked changes;" >&2
   echo "fixtures must be generated from a clean, committed tree" >&2
   echo "(set AXON_ALLOW_DIRTY=1 to override for local experimentation)." >&2
   exit 1
 fi
 
-export AXON_ENCODER_GIT_SHA="$(git -C "$AXON_ENCODER_DIR" rev-parse HEAD)"
+EXPECTED_SHA="${AXON_ENCODER_GIT_SHA:-}"
+HEAD_SHA="$(git -C "$AXON_ENCODER_DIR" rev-parse HEAD)"
+if [ -n "$EXPECTED_SHA" ] && [ "$EXPECTED_SHA" != "$HEAD_SHA" ]; then
+  echo "error: AXON_ENCODER_GIT_SHA=$EXPECTED_SHA but" >&2
+  echo "$AXON_ENCODER_DIR HEAD is $HEAD_SHA" >&2
+  exit 1
+fi
+export AXON_ENCODER_GIT_SHA="$HEAD_SHA"
 echo "axon-encoder @ $AXON_ENCODER_GIT_SHA"
 
 ENCODERS="rate poisson latency population temporal predictive"
