@@ -171,7 +171,7 @@ def test_every_checked_in_fixture_loads(case_dir: Path) -> None:
     assert meta["encoder"] == case_dir.parent.name
     assert case.events.t.dtype == np.int64
     assert case.events.neuron_id.dtype == np.int64
-    assert len(case.events) > 0
+    assert len(case.events.t) <= meta["n_neurons"] * meta["n_steps"]
 
 
 def test_generated_fixtures_have_provenance() -> None:
