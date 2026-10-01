@@ -36,6 +36,29 @@ def _load_npy(path: Path, *, required: bool) -> np.ndarray | None:
     return np.load(path, allow_pickle=False)
 
 
+def _int_index(arr: np.ndarray, name: str, staging_dir: Path) -> np.ndarray:
+    if not np.issubdtype(arr.dtype, np.integer) or not np.all(arr >= 0):
+        raise SpikeIOError(f"{staging_dir}: {name}.npy must be non-negative integers")
+    return np.asarray(arr, dtype=np.int64)
+
+
+def _validated_amp(
+    amp: np.ndarray, t_shape: tuple[int, ...], staging_dir: Path
+) -> np.ndarray:
+    if not np.issubdtype(amp.dtype, np.floating) and not np.issubdtype(
+        amp.dtype, np.integer
+    ):
+        raise SpikeIOError(f"{staging_dir}: amp.npy must be numeric")
+    amp = np.asarray(amp, dtype=np.float32)
+    if not np.all(np.isfinite(amp)):
+        raise SpikeIOError(f"{staging_dir}: amp.npy contains non-finite values")
+    if amp.shape != t_shape:
+        raise SpikeIOError(
+            f"{staging_dir}: amp {amp.shape} length mismatch vs t {t_shape}"
+        )
+    return amp
+
+
 def pack(staging_dir: Path, case_dir: Path) -> None:
     t = _load_npy(staging_dir / "t.npy", required=True)
     neuron_id = _load_npy(staging_dir / "neuron_id.npy", required=True)
@@ -45,30 +68,15 @@ def pack(staging_dir: Path, case_dir: Path) -> None:
     if not meta_path.is_file():
         raise SpikeIOError(f"{meta_path}: required staging file missing")
 
-    if not np.issubdtype(t.dtype, np.integer) or not np.all(t >= 0):
-        raise SpikeIOError(f"{staging_dir}: t.npy must be non-negative integers")
-    if not np.issubdtype(neuron_id.dtype, np.integer) or not np.all(neuron_id >= 0):
-        raise SpikeIOError(f"{staging_dir}: neuron_id.npy must be non-negative integers")
-    t = np.asarray(t, dtype=np.int64)
-    neuron_id = np.asarray(neuron_id, dtype=np.int64)
+    t = _int_index(t, "t", staging_dir)
+    neuron_id = _int_index(neuron_id, "neuron_id", staging_dir)
     if t.shape != neuron_id.shape:
         raise SpikeIOError(
             f"{staging_dir}: t {t.shape} and neuron_id {neuron_id.shape} length mismatch"
         )
     arrays: dict[str, np.ndarray] = {"t": t, "neuron_id": neuron_id}
     if amp is not None:
-        if not np.issubdtype(amp.dtype, np.floating) and not np.issubdtype(
-            amp.dtype, np.integer
-        ):
-            raise SpikeIOError(f"{staging_dir}: amp.npy must be numeric")
-        amp = np.asarray(amp, dtype=np.float32)
-        if not np.all(np.isfinite(amp)):
-            raise SpikeIOError(f"{staging_dir}: amp.npy contains non-finite values")
-        if amp.shape != t.shape:
-            raise SpikeIOError(
-                f"{staging_dir}: amp {amp.shape} length mismatch vs t {t.shape}"
-            )
-        arrays["amp"] = amp
+        arrays["amp"] = _validated_amp(amp, t.shape, staging_dir)
 
     # Rebuild the case directory so stale files from a previous run can't
     # masquerade as outputs of this one (mixed provenance).
