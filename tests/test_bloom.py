@@ -10,6 +10,7 @@ import torch
 from PIL import Image
 
 from spike_viz import bloom_raster, load_axon_export
+from spike_viz.events import SpikeEvents
 from spike_viz.io import sparse_to_dense
 
 
@@ -72,6 +73,8 @@ def test_bloom_rejects_bad_params_and_colormap() -> None:
     grid = np.zeros((3, 3), dtype=np.float32)
     with pytest.raises(ValueError, match="sigma"):
         bloom_raster(grid, sigma=-1.0)
+    with pytest.raises(ValueError, match="sigma"):
+        bloom_raster(grid, sigma=129.0)
     with pytest.raises(ValueError, match="intensity"):
         bloom_raster(grid, intensity=0.0)
     with pytest.raises(ValueError, match="gamma"):
@@ -80,6 +83,32 @@ def test_bloom_rejects_bad_params_and_colormap() -> None:
         bloom_raster(grid, colormap="not-a-map")
     with pytest.raises(ValueError, match=r"\[T, N\]"):
         bloom_raster(np.zeros(4, dtype=np.float32))
+
+
+def test_bloom_handles_torch_cast_overflow_and_bfloat16() -> None:
+    with pytest.raises(ValueError, match="out-of-range"):
+        bloom_raster(torch.tensor([[1e300]], dtype=torch.float64))
+
+    grid = torch.tensor([[0, 1]], dtype=torch.bfloat16)
+    assert bloom_raster(grid, sigma=0.0).shape == (2, 1, 3)
+
+
+def test_bloom_tiny_positive_params_use_stable_limits() -> None:
+    grid = np.array([[0.0, 1.0]], dtype=np.float32)
+    rgb = bloom_raster(grid, sigma=1e-50, intensity=1e-50)
+    assert np.isfinite(rgb).all()
+    assert rgb[1, 0].max() > rgb[0, 0].max()
+
+
+def test_bloom_sparse_preserves_zero_amp_events() -> None:
+    events = SpikeEvents(
+        t=np.array([0, 1], dtype=np.int64),
+        neuron_id=np.array([0, 1], dtype=np.int64),
+        amp=np.array([1.0, 0.0], dtype=np.float32),
+    )
+    rgb = bloom_raster(events, n_steps=2, n_neurons=2, sigma=0.0)
+    assert rgb[0, 0].max() > 0
+    assert rgb[1, 1].max() > 0
 
 
 def test_bloom_colormap_variants_and_custom_lut() -> None:

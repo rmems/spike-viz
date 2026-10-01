@@ -18,8 +18,12 @@ import torch
 import torch.nn.functional as F
 from PIL import Image
 
+from spike_viz.events import SpikeEvents
+from spike_viz.io import sparse_to_dense
+
 PathLike = str | os.PathLike[str]
 Colormap = str | npt.NDArray[np.uint8 | np.floating] | Callable[..., npt.NDArray]
+_MAX_SIGMA = 128.0
 
 
 def _control_lut(stops: list[tuple[float, tuple[float, float, float]]]) -> npt.NDArray[np.uint8]:
@@ -162,8 +166,10 @@ def _separable_blur(frame: torch.Tensor, sigma: float) -> torch.Tensor:
 
 
 def bloom_raster(
-    grid: npt.NDArray[np.floating | np.bool_ | np.integer] | torch.Tensor,
+    grid: SpikeEvents | npt.NDArray[np.floating | np.bool_ | np.integer] | torch.Tensor,
     *,
+    n_steps: int | None = None,
+    n_neurons: int | None = None,
     sigma: float = 2.0,
     intensity: float = 1.0,
     gamma: float = 2.2,
@@ -180,10 +186,15 @@ def bloom_raster(
     Parameters
     ----------
     grid:
-        Dense ``[T, N]`` spike grid (e.g. from :func:`sparse_to_dense`).
+        Dense ``[T, N]`` spike grid (e.g. from :func:`sparse_to_dense`) or
+        sparse :class:`~spike_viz.events.SpikeEvents`. Sparse input requires
+        ``n_steps`` and ``n_neurons`` and preserves zero-polarity events.
         Never synthesized here — pass loader output.
+    n_steps, n_neurons:
+        Grid dimensions required only for sparse ``SpikeEvents`` input.
     sigma:
-        Gaussian blur std in pixels; ``0`` disables blur. Must be finite, >= 0.
+        Gaussian blur std in pixels; ``0`` disables blur. Must be finite and
+        between 0 and 128 inclusive.
     intensity:
         Tone-map strength; must be finite, > 0. Larger values lift mid-tones.
     gamma:
@@ -211,8 +222,8 @@ def bloom_raster(
     sigma = float(sigma)
     intensity = float(intensity)
     gamma = float(gamma)
-    if sigma < 0.0:
-        raise ValueError(f"sigma must be >= 0, got {sigma!r}")
+    if not 0.0 <= sigma <= _MAX_SIGMA:
+        raise ValueError(f"sigma must be between 0 and {_MAX_SIGMA:g}, got {sigma!r}")
     if intensity <= 0.0:
         raise ValueError(f"intensity must be > 0, got {intensity!r}")
     if gamma <= 0.0:
@@ -221,16 +232,21 @@ def bloom_raster(
     compute = _resolve_device(device)
     lut = _resolve_lut(colormap)
 
+    if isinstance(grid, SpikeEvents):
+        if n_steps is None or n_neurons is None:
+            raise ValueError("n_steps and n_neurons are required when grid is SpikeEvents")
+        # axon-encoder exports polarity=False as amp=0.0. It is still an event,
+        # so make it visible before dense conversion discards that information.
+        if grid.amp is not None:
+            amp = np.where(grid.amp == 0, np.float32(1.0), grid.amp)
+            grid = SpikeEvents(t=grid.t, neuron_id=grid.neuron_id, amp=amp)
+        with np.errstate(over="ignore"):
+            grid = sparse_to_dense(grid, n_steps, n_neurons, accumulate=True)
+
     if isinstance(grid, torch.Tensor):
         if grid.ndim != 2 or 0 in grid.shape:
             raise ValueError(f"grid must be a non-empty 2-D [T, N] array, got shape {tuple(grid.shape)}")
-        if grid.dtype in (torch.complex64, torch.complex128):
-            raise ValueError(f"grid must be float, bool, or integer, got dtype {grid.dtype}")
-        if grid.dtype not in (
-            torch.float16, torch.float32, torch.float64,
-            torch.int8, torch.int16, torch.int32, torch.int64,
-            torch.uint8, torch.bool,
-        ):
+        if grid.is_complex() or grid.is_quantized:
             raise ValueError(f"grid must be float, bool, or integer, got dtype {grid.dtype}")
         with torch.no_grad():
             if grid.is_floating_point():
@@ -239,6 +255,8 @@ def bloom_raster(
             if bool((grid < 0).any()):
                 raise ValueError("grid must be non-negative")
             frame = grid.detach().to(device=compute, dtype=torch.float32).t().contiguous()
+            if not bool(torch.isfinite(frame).all()):
+                raise ValueError("grid contains non-finite or out-of-range values")
     else:
         arr = np.asarray(grid)
         if arr.ndim != 2 or 0 in arr.shape:
@@ -254,14 +272,22 @@ def bloom_raster(
         frame = torch.from_numpy(np.ascontiguousarray(frame_np)).to(device=compute, dtype=torch.float32)
 
     with torch.no_grad():
+        # A subnormal sigma rounds to zero in the float32 kernel. Its discrete
+        # limiting blur is the identity, so avoid a 0/0 kernel center.
+        if 0.0 < sigma < np.finfo(np.float32).tiny:
+            sigma = 0.0
         blurred = _separable_blur(frame, sigma)
         peak = float(blurred.max().item()) if blurred.numel() else 0.0
         if peak > 0:
             normed = blurred / peak
         else:
             normed = blurred
-        denom = math.log1p(intensity)
-        tonemapped = torch.log1p(torch.clamp(normed * intensity, min=0.0)) / denom
+        if intensity < np.finfo(np.float32).tiny:
+            # lim_{a -> 0} log1p(a * x) / log1p(a) = x
+            tonemapped = normed
+        else:
+            denom = math.log1p(intensity)
+            tonemapped = torch.log1p(torch.clamp(normed * intensity, min=0.0)) / denom
         corrected = torch.pow(torch.clamp(tonemapped, 0.0, 1.0), 1.0 / gamma)
         heat = corrected.detach().to("cpu").numpy().astype(np.float64)
 
