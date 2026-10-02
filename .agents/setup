@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+# Amp orb setup for spike-viz.
+#
+# Amp runs this from the repository root when it builds a project orb snapshot
+# (Debian 12, CPU only: orbs have no GPU). It must finish within 20 minutes and
+# be safe to run more than once. See https://ampcode.com/docs/orbs/customizing
+#
+# Installs only what this repo's CI and manifests need:
+#   - uv + Python 3.14
+#   - venv with CPU torch (download.pytorch.org/whl/cpu) + -e ".[dev]"
+#
+# It ends with a dependency fetch/prebuild, not a test run.
+set -euo pipefail
+
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
+
+# --- Python (uv) ---
+export PATH="$HOME/.local/bin:$PATH"
+if ! command -v uv >/dev/null 2>&1; then
+  curl -LsSf https://astral.sh/uv/install.sh | sh
+fi
+# ci.yml uses Python 3.14.
+uv python install 3.14
+if [ ! -x .venv/bin/python ]; then
+  uv venv --python 3.14 .venv
+fi
+# ci.yml installs the CPU-only torch wheel first, then the package.
+uv pip install --python .venv/bin/python --index-url https://download.pytorch.org/whl/cpu torch
+uv pip install --python .venv/bin/python -e ".[dev]"
+
+echo "Amp orb setup for spike-viz finished."
