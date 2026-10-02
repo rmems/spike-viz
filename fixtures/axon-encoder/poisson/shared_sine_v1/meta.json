@@ -1,6 +1,6 @@
 {
-  "axon_encoder_git_sha": "2d498bca5373728023f42b416a3f73a39a7deff1",
-  "axon_encoder_version": "0.5.0",
+  "axon_encoder_git_sha": "becb40d0c8722710677dabbf66d420a9c77f2eda",
+  "axon_encoder_version": "0.6.0",
   "dt_seconds": 0.001,
   "encoder": "poisson",
   "encoder_config": {
