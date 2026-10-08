@@ -80,4 +80,6 @@ Optional formatting / lint (only if configured in the repo):
 ## Out of scope for this file
 
 - Linear dual-tracking process
-- Remote-only CI configuration (document in workflow files when #13 lands)
+- Remote CI: `.github/workflows/ci.yml` runs the package verification and `pytest` on
+  GitHub-hosted Linux (Python 3.10 / 3.12, CPU torch). `cuda`-marked tests skip
+  without a GPU; a missing GPU is never a failure. This does not replace the local gate.

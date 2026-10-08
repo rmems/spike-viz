@@ -8,6 +8,7 @@ def test_import_spike_viz() -> None:
 
     assert isinstance(spike_viz.__version__, str) and spike_viz.__version__
     for name in (
+        "AxonExportCase",
         "SpikeEvents",
         "SpikeIOError",
         "load_axon_export",
