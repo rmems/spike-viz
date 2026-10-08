@@ -1,0 +1,4 @@
+{
+  "name": "spike-viz",
+  "install": "bash .cursor/install.sh"
+}
