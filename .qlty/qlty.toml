@@ -1,0 +1,11 @@
+config_version = "0"
+
+[[source]]
+name = "default"
+default = true
+
+# bandit B101 flags `assert` in pytest tests, where assert is the idiom.
+[[triage]]
+match.rules = ["bandit:B101"]
+match.file_patterns = ["tests/**"]
+set.ignored = true
