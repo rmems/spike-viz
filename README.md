@@ -32,6 +32,7 @@ pytest -q
 | [docs/CHARTER.md](docs/CHARTER.md) | Purpose, truth/paint split, non-goals |
 | [docs/schema.md](docs/schema.md) | Sparse/dense spike schema |
 | [docs/axon-encoder-export.md](docs/axon-encoder-export.md) | Export layout + golden fixtures |
+| [docs/gain-triptych.md](docs/gain-triptych.md) | Real rate gain fixtures → captioned silence / normal / elevated PNG |
 | [AGENTS.md](AGENTS.md) | Rules for coding agents |
 | [REVIEW.md](REVIEW.md) | Local quality gate before merge |
 
@@ -56,3 +57,9 @@ use different rate mappings, so this is not a parameter-matched experiment.
 See [the hero guide](docs/rate-vs-poisson-hero.md) for the rendering command,
 exact axon-encoder source, and fixture regeneration instructions. No Python
 re-encoding, synthetic fallback, or GPU required.
+
+## Rate gain triptych
+
+The [rate gain triptych](docs/gain-triptych.md) (`render_gain_triptych`) is three
+provenance-pinned Rust exports of one stimulus: an honestly empty silence panel,
+identity gain, and elevated gain, with visible gain and provenance captions.
