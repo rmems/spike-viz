@@ -216,3 +216,37 @@ def test_generated_fixtures_use_absolute_ticks() -> None:
         # Window model (span = max_latency + 1 = 11): later presentations must
         # export spikes past the first window's range.
         assert int(case.events.t.max()) >= 11
+
+
+def test_rate_gain_fixtures_are_same_stimulus_real_exports() -> None:
+    cases = [
+        load_axon_export(FIXTURE_ROOT / "rate" / f"shared_sine_gain_{gain}_v1")
+        for gain in (0, 1, 2)
+    ]
+    reference = cases[1]
+    for gain, case in enumerate(cases):
+        assert case.meta["synthetic"] is False
+        assert case.meta["encoding_gains"] == {
+            "firing_rate_scale": float(gain),
+            "threshold_scale": 1.0,
+            "sensitivity_scale": 1.0,
+            "latency_scale": 1.0,
+        }
+        assert case.meta["modulators"] is None  # Direct gains, no curves.
+        for key in (
+            "encoder_config", "encoder", "dt_seconds", "seed", "n_neurons",
+            "n_steps", "axon_encoder_git_sha", "exporter_patch_sha256",
+        ):
+            assert case.meta[key] == reference.meta[key]
+        np.testing.assert_array_equal(
+            np.load(case.stimulus_path, allow_pickle=False),
+            np.load(reference.stimulus_path, allow_pickle=False),
+        )
+    assert len(cases[0].events) == 0
+    assert 0 < len(cases[1].events) < len(cases[2].events)
+    # The direct identity-gain path must preserve the ordinary upstream export.
+    ordinary = load_axon_export(FIXTURE_ROOT / "rate" / "shared_sine_v1")
+    for field in ("t", "neuron_id", "amp"):
+        np.testing.assert_array_equal(
+            getattr(reference.events, field), getattr(ordinary.events, field)
+        )

@@ -8,8 +8,11 @@ Generation path: axon-encoder ships `examples/export_spike_viz.rs`, which
 writes a staging layout (`t.npy` / `neuron_id.npy` / `amp.npy` /
 `stimulus.npy` / `meta.json`); `scripts/pack_axon_export.py` in this repo
 assembles that staging into `spikes.npz` and validates the result through
-`load_axon_export`. `scripts/generate_fixtures.sh` regenerates every
-checked-in case from a pinned axon-encoder checkout.
+`load_axon_export`. `scripts/generate_fixtures.sh` regenerates the six
+`shared_sine_v1` encoder cases from a pinned axon-encoder checkout.
+The separate [gain triptych generation path](gain-triptych.md) regenerates
+the three rate `shared_sine_gain_{0,1,2}_v1` cases using a recorded patch to
+the upstream export example; no Python-side encoding is involved.
 
 Schema details: [schema.md](schema.md). Charter: [CHARTER.md](CHARTER.md).
 

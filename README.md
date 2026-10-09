@@ -32,6 +32,7 @@ pytest -q
 | [docs/CHARTER.md](docs/CHARTER.md) | Purpose, truth/paint split, non-goals |
 | [docs/schema.md](docs/schema.md) | Sparse/dense spike schema |
 | [docs/axon-encoder-export.md](docs/axon-encoder-export.md) | Export layout + golden fixtures |
+| [docs/gain-triptych.md](docs/gain-triptych.md) | Real rate gain fixtures → captioned silence / normal / elevated PNG |
 | [AGENTS.md](AGENTS.md) | Rules for coding agents |
 | [REVIEW.md](REVIEW.md) | Local quality gate before merge |
 
@@ -44,5 +45,7 @@ case = load_axon_export("fixtures/axon-encoder/rate/tiny_synthetic")
 print(case.meta["encoder"], len(case.events))
 ```
 
-Package renderers and hero stills land under later `v0.1` / `v0.2` issues
-([tracker](https://github.com/rmems/spike-viz/issues)).
+For a complete CPU hero still, see the [rate gain triptych](docs/gain-triptych.md)
+(`render_gain_triptych`): three provenance-pinned Rust exports, an honestly empty
+silence panel, and visible gain/provenance captions. Remaining hero stills are
+tracked under [v0.2 issues](https://github.com/rmems/spike-viz/issues).
