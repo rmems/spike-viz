@@ -123,6 +123,36 @@ case.stimulus_path  # Path | None
 
 Missing `spikes.npz` / `meta.json` → `SpikeIOError` (not empty spikes).
 
+## Preferred-direction geometry (optional renderer extension)
+
+Direction exports may add `preferred_angles_radians` to `meta.json`: a JSON
+array of exactly `n_neurons` finite numbers, in radians, indexed by exported
+`neuron_id`. Zero points east; positive angles run counterclockwise. Angles
+outside `[0, 2π)` are equivalent modulo a turn. The loader preserves this
+optional field; `render_direction_ring` validates it when rendering. Missing
+or invalid angles raise `ValueError`; no evenly spaced fallback is provided.
+
+These must be **actual preferred directions supplied by the source**, not
+angles inferred from channel order or linear scalar tuning centers. This is
+an additive metadata extension to schema `1.0`, not a change to spike arrays.
+
+**Current fixture gap for #17:** `population/shared_sine_v1` is a real,
+provenance-pinned PopulationEncoder export, but **not a direction export**.
+At its recorded commit `becb40d0c8722710677dabbf66d420a9c77f2eda`, axon-encoder
+[`src/encoders/population.rs`](https://github.com/Limen-Neural/axon-encoder/blob/becb40d0c8722710677dabbf66d420a9c77f2eda/src/encoders/population.rs)
+defines Gaussian tuning on a linear scalar interval. The exporter uses four
+neurons per input channel, scalar centers on `[0, 1]`, and spike channel
+`input_channel * 4 + neuron_index` (eight inputs, 32 neurons). There is no
+circular distance or preferred angle. Mapping these centers onto a circle
+would invent direction semantics, so this renderer intentionally rejects
+that fixture. Its spikes and metadata remain unchanged.
+
+To finish #17, the truth owner must supply genuine directional geometry and
+a provenance-pinned export carrying the angles, then spike-viz can check in
+the fixture, add a real-fixture rendering test, and produce the hero PNG.
+The renderer is available in advance; the acceptance criterion for a real
+preferred-direction fixture remains unmet.
+
 ## Golden fixtures policy
 
 1. Real exports from a pinned `axon_encoder_git_sha` live under
