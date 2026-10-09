@@ -82,3 +82,28 @@ re-encoding, synthetic fallback, or GPU required.
 The [rate gain triptych](docs/gain-triptych.md) (`render_gain_triptych`) is three
 provenance-pinned Rust exports of one stimulus: an honestly empty silence panel,
 identity gain, and elevated gain, with visible gain and provenance captions.
+
+## Preferred-direction ring (explicit geometry required)
+
+```python
+from spike_viz import load_axon_export, render_direction_ring
+
+# A source-supplied directional export; not the current scalar population fixture.
+case = load_axon_export("path/to/directional-export")
+image = render_direction_ring(case, window=(0, 8), glow=True, out_path="ring.png")
+```
+
+The export must include `meta["preferred_angles_radians"]`: N finite angles
+indexed by neuron id, in radians (zero east, counterclockwise positive).
+No angles or activity are inferred. The CPU/Pillow renderer uses event counts
+in `[start, stop)` for dot size/brightness, including negative/zero-polarity
+events. Omitting `window` displays the last export step, even if silent;
+`glow=False` disables neon halos. Muted dots indicate zero events. Visible
+and embedded PNG provenance includes encoder, dt, seed, N, T, source commit
+(or explicitly `unknown`), synthetic status, and the displayed step interval.
+For dimensionless encoders, dt is the export sampling convention.
+
+**#17 remains fixture-blocked:** the checked-in PopulationEncoder export
+has linear scalar Gaussian tuning, not preferred directions. It is rejected
+rather than silently mapped onto a ring. See the
+[export contract and remaining prerequisite](docs/axon-encoder-export.md#preferred-direction-geometry-optional-renderer-extension).
