@@ -126,6 +126,64 @@ case.stimulus_path  # Path | None
 
 Missing `spikes.npz` / `meta.json` → `SpikeIOError` (not empty spikes).
 
+## Provenance captions
+
+`provenance_caption(meta_path, *, out_path=None)` reads and validates the
+reconciled schema 1.0 `meta.json` using the same loader as `load_axon_export`.
+It returns a deterministic, single-line human-readable caption in fixed field
+order, independent of JSON key order. An optional `out_path` writes a UTF-8
+plain-text sidecar with a trailing newline; parent directories must exist.
+The original `meta.json` remains the machine-readable provenance source.
+
+Required metadata keys are `schema_version`, `encoder`, `dt_seconds`, `seed`,
+`n_neurons`, and `n_steps`, with the types and constraints in the table above.
+The caption displays `encoder`, `dt_seconds`, `seed`, **N** (`n_neurons`), and
+**T** (`n_steps`). `schema_version` is validated but not displayed.
+
+`axon_encoder_git_sha` is optional: a known string is displayed in full, never
+shortened or inferred from a local checkout. Missing, null, empty, or
+whitespace-only values display `axon_encoder_git_sha=unknown`. A non-string,
+non-null value raises `SpikeIOError`. Encoder and commit strings are
+JSON-quoted/escaped to keep the output on one line. If `synthetic` is explicitly
+`true`, the caption also displays `synthetic=true`; absence of this optional
+key does **not** assert that the export is real. Other optional metadata
+(`stimulus_notes`, `notes`, and exporter-specific keys) is not displayed.
+
+`dt_seconds` still means seconds per displayed step: for dimensionless
+encoders it is the export sampling convention, **not** a physical timebase
+claimed by the encoder. Missing or invalid required metadata fails loudly
+before writing a sidecar. File write failures propagate as `OSError`.
+
+Example (existing CPU raster renderer, no spikes invented):
+
+```python
+from pathlib import Path
+from spike_viz import load_axon_export, provenance_caption, render_raster
+
+case = load_axon_export("fixtures/axon-encoder/rate/shared_sine_v1")
+out = Path("rate.png")
+render_raster(
+    case.events,
+    n_steps=case.meta["n_steps"],
+    n_neurons=case.meta["n_neurons"],
+    scale=8,
+    out_path=out,
+)
+caption = provenance_caption(case.meta_path, out_path=out.with_suffix(".txt"))
+print(caption)
+```
+
+Output from that pinned fixture:
+
+```text
+encoder="rate" | dt_seconds=0.001 | seed=1592590337 | N=8 | T=64 | axon_encoder_git_sha="908a34797c8aaff0a57e0ea4167aa00f3780c940"
+```
+
+The Rate vs Poisson still and the gain triptych already paint their own visible
+provenance on the PNG. This helper is the plain-text sidecar for one export's
+`meta.json`. It does not add a footer or alter raster, bloom, hero, or triptych
+pixels. A comparison that uses it must retain provenance for **both** inputs.
+
 ## Golden fixtures policy
 
 1. Real exports from a pinned `axon_encoder_git_sha` live under
