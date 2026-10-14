@@ -190,6 +190,18 @@ def test_hero_round_trips_precise_sampling_interval(
     assert painted.count("79.01234496 ms") == 2
     assert "79.0123 ms" not in painted
 
+    # Binary n_steps * dt * 1000 is 1.9200000000000002 for dt_seconds=0.00003.
+    drawn.clear()
+    for case in cases:
+        meta_path = case / "meta.json"
+        meta = json.loads(meta_path.read_text())
+        meta["dt_seconds"] = 0.00003
+        meta_path.write_text(json.dumps(meta))
+    spike_viz.render_rate_poisson_hero(*cases, rate_mode="streaming")
+    noisy = "\n".join(drawn)
+    assert noisy.count("1.92 ms") == 2
+    assert "1.9200000000000002" not in noisy
+
 
 def test_hero_rate_mode_must_be_explicit_and_valid() -> None:
     args = (FIXTURES / "rate/shared_sine_v1", FIXTURES / "poisson/shared_sine_v1")

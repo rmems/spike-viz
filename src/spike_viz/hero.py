@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from decimal import Decimal
 from pathlib import Path
 from typing import Literal
 
@@ -24,6 +25,16 @@ def _format_number(value: float) -> str:
     if text.endswith(".0") and text[:-2].lstrip("-").isdigit():
         return text[:-2]
     return text
+
+
+def _format_duration_ms(n_steps: int, dt_seconds: float) -> str:
+    """Milliseconds as the decimal product of the round-trip interval and ``T``.
+
+    ``n_steps * dt_seconds * 1000`` in binary float can paint noise such as
+    ``1.9200000000000002`` for ``dt_seconds=0.00003``.
+    """
+    duration = Decimal(_format_number(dt_seconds)) * int(n_steps) * 1000
+    return format(duration.normalize(), "f")
 
 
 def _stimulus_for_encoder(case: AxonExportCase, encoder: str) -> np.ndarray:
@@ -117,8 +128,7 @@ def render_rate_poisson_hero(
             (x - 28, height + 66), str(meta["n_neurons"] - 1), font=font, fill="#a5b6cc"
         )
         draw.text((x, height + 84), "0 ms", font=font, fill="#a5b6cc")
-        duration_ms = meta["n_steps"] * meta["dt_seconds"] * 1000
-        end_label = f"{_format_number(duration_ms)} ms"
+        end_label = f"{_format_duration_ms(meta['n_steps'], meta['dt_seconds'])} ms"
         end_width = draw.textbbox((0, 0), end_label, font=font)[2]
         draw.text(
             (x + width - end_width, height + 84), end_label, font=font, fill="#a5b6cc"
