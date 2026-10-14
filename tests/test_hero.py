@@ -35,7 +35,16 @@ def test_hero_saves_shared_scale_rasters_and_provenance(tmp_path: Path) -> None:
     assert "seed=1592590337" in caption
     assert "dt_seconds=0.001" in caption
     assert "N=8" in caption and "T=64" in caption
-    assert caption.count("becb40d0c8722710677dabbf66d420a9c77f2eda") == 2
+    # Echo the checked-in pin rather than a second hardcoded SHA, so a
+    # fixture re-pin does not leave the caption assertion behind.
+    rate_sha = json.loads((FIXTURES / "rate/shared_sine_v1/meta.json").read_text())[
+        "axon_encoder_git_sha"
+    ]
+    poisson_sha = json.loads(
+        (FIXTURES / "poisson/shared_sine_v1/meta.json").read_text()
+    )["axon_encoder_git_sha"]
+    assert rate_sha == poisson_sha
+    assert caption.count(rate_sha) == 2
     # Compare all observed spike bins, not decorative text or incidental layout.
     # Locate the black raster interiors in each half without fixing coordinates.
     sizes = []
