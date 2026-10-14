@@ -9,9 +9,28 @@ from typing import Literal
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont, PngImagePlugin
 
-from spike_viz.export import load_axon_export
+from spike_viz.export import AxonExportCase, load_axon_export
 from spike_viz.io import SpikeIOError, load_dense
 from spike_viz.render import PathLike, render_raster
+
+
+def _stimulus_for_encoder(case: AxonExportCase, encoder: str) -> np.ndarray:
+    """Return the finite ``[T, N]`` stimulus for one real, pinned export."""
+    if case.meta["encoder"] != encoder:
+        raise SpikeIOError(f"{case.path}: expected {encoder} encoder")
+    if case.meta.get("synthetic") is not False:
+        raise SpikeIOError(f"{case.path}: hero requires synthetic=false")
+    sha = case.meta.get("axon_encoder_git_sha")
+    if not isinstance(sha, str) or not re.fullmatch(r"[0-9a-fA-F]{40}", sha):
+        raise SpikeIOError(f"{case.path}: full axon_encoder_git_sha required")
+    if case.stimulus_path is None:
+        raise SpikeIOError(f"{case.path}: stimulus.npy required for comparison")
+    stimulus = load_dense(case.stimulus_path)
+    if stimulus.shape != (case.meta["n_steps"], case.meta["n_neurons"]):
+        raise SpikeIOError(f"{case.path}: stimulus must have shape [T, N]")
+    if not np.all(np.isfinite(stimulus)):
+        raise SpikeIOError(f"{case.path}: stimulus must be finite")
+    return stimulus
 
 
 def render_rate_poisson_hero(
@@ -45,22 +64,7 @@ def render_rate_poisson_hero(
 
     stimuli = []
     for case, encoder in zip(cases, ("rate", "poisson")):
-        if case.meta["encoder"] != encoder:
-            raise SpikeIOError(f"{case.path}: expected {encoder} encoder")
-        if case.meta.get("synthetic") is not False:
-            raise SpikeIOError(f"{case.path}: hero requires synthetic=false")
-        sha = case.meta.get("axon_encoder_git_sha")
-        if not isinstance(sha, str) or not re.fullmatch(r"[0-9a-fA-F]{40}", sha):
-            raise SpikeIOError(f"{case.path}: full axon_encoder_git_sha required")
-        if case.stimulus_path is None:
-            raise SpikeIOError(f"{case.path}: stimulus.npy required for comparison")
-        stimulus = load_dense(case.stimulus_path)
-        if stimulus.shape != (case.meta["n_steps"], case.meta["n_neurons"]):
-            raise SpikeIOError(f"{case.path}: stimulus must have shape [T, N]")
-        if not np.all(np.isfinite(stimulus)):
-            raise SpikeIOError(f"{case.path}: stimulus must be finite")
-        stimuli.append(stimulus)
-
+        stimuli.append(_stimulus_for_encoder(case, encoder))
     if not np.array_equal(stimuli[0], stimuli[1]):
         raise SpikeIOError("hero requires the same stimulus in both exports")
 
