@@ -14,8 +14,10 @@ def provenance_caption(meta_path: PathLike, *, out_path: PathLike | None = None)
 
     Fields appear in a fixed order: encoder, dt_seconds, seed, N, T, and
     axon_encoder_git_sha (full value, or ``unknown`` if absent/null/blank).
-    Synthetic exports additionally carry ``synthetic=true``. String values
-    are JSON-quoted so embedded newlines cannot split the caption into lines.
+    Synthetic exports additionally carry ``synthetic=true``. A present
+    ``synthetic`` value that is not a boolean raises :class:`SpikeIOError`.
+    String values are JSON-quoted with non-ASCII escaped, so newlines,
+    U+2028, U+2029, and lone surrogates stay on one UTF-8 line.
 
     ``dt_seconds`` retains the export's seconds-per-displayed-step convention;
     it is not necessarily an encoder-owned physical timebase. No provenance
@@ -26,28 +28,40 @@ def provenance_caption(meta_path: PathLike, *, out_path: PathLike | None = None)
     exist; otherwise :class:`OSError` is raised and nothing is written. The
     sidecar is UTF-8 plain text with one trailing newline. Return the caption
     without a trailing newline. When the parent exists, invalid metadata
-    raises :class:`SpikeIOError` before any sidecar is written. Other write
-    failures raise :class:`OSError`.
+    raises :class:`SpikeIOError` before any sidecar is written. If
+    ``out_path`` resolves to the metadata file, including through a symlink
+    or hard link, :class:`SpikeIOError` is raised and that file is left
+    unchanged. Other write failures raise :class:`OSError`.
     """
     destination = _resolved_sidecar(out_path) if out_path is not None else None
+    _reject_metadata_overwrite(meta_path, destination)
     meta = load_meta(meta_path)
     sha = meta.get("axon_encoder_git_sha")
     if sha is not None and not isinstance(sha, str):
         raise SpikeIOError(
             f"{meta_path}: 'axon_encoder_git_sha' must be a string or null"
         )
-    commit = json.dumps(sha, ensure_ascii=False) if sha and sha.strip() else "unknown"
+    commit = _quoted(sha) if sha and sha.strip() else "unknown"
     caption = (
-        f"encoder={json.dumps(meta['encoder'], ensure_ascii=False)} | "
+        f"encoder={_quoted(meta['encoder'])} | "
         f"dt_seconds={meta['dt_seconds']} | seed={meta['seed']} | "
         f"N={meta['n_neurons']} | T={meta['n_steps']} | "
         f"axon_encoder_git_sha={commit}"
     )
-    if meta.get("synthetic") is True:
-        caption += " | synthetic=true"
+    if "synthetic" in meta:
+        synthetic = meta["synthetic"]
+        if not isinstance(synthetic, bool):
+            raise SpikeIOError(f"{meta_path}: 'synthetic' must be a boolean")
+        if synthetic:
+            caption += " | synthetic=true"
     if destination is not None:
         destination.write_text(caption + "\n", encoding="utf-8")
     return caption
+
+
+def _quoted(value: str) -> str:
+    """JSON-quote a caption field, escaping non-ASCII and line separators."""
+    return json.dumps(value)
 
 
 def _resolved_sidecar(out_path: PathLike) -> Path:
@@ -61,3 +75,21 @@ def _resolved_sidecar(out_path: PathLike) -> Path:
     if not resolved.parent.is_dir():
         raise OSError(f"Parent directory does not exist: {resolved.parent}")
     return resolved
+
+
+def _reject_metadata_overwrite(meta_path: PathLike, destination: Path | None) -> None:
+    """Refuse a sidecar that would replace the metadata file."""
+    if destination is None:
+        return
+    source = Path(meta_path).expanduser().resolve()
+    same = destination == source
+    if not same:
+        try:
+            same = destination.samefile(source)
+        except OSError:
+            same = False
+    if same:
+        raise SpikeIOError(
+            f"{destination}: out_path resolves to the metadata file; "
+            f"refusing to overwrite {source}"
+        )

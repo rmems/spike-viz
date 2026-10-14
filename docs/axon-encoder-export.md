@@ -136,7 +136,9 @@ absolute path before metadata is read, so `..` is collapsed before any write.
 The parent directory must already exist; a missing parent raises `OSError`
 and no sidecar is created. When the parent exists, the sidecar is UTF-8
 plain text with a trailing newline, written only after metadata validation
-succeeds. The original `meta.json` remains the machine-readable provenance
+succeeds. If `out_path` resolves to the metadata file, including through a
+symlink or hard link, `SpikeIOError` is raised and that file is left
+unchanged. The original `meta.json` remains the machine-readable provenance
 source.
 
 Required metadata keys are `schema_version`, `encoder`, `dt_seconds`, `seed`,
@@ -148,9 +150,11 @@ The caption displays `encoder`, `dt_seconds`, `seed`, **N** (`n_neurons`), and
 shortened or inferred from a local checkout. Missing, null, empty, or
 whitespace-only values display `axon_encoder_git_sha=unknown`. A non-string,
 non-null value raises `SpikeIOError`. Encoder and commit strings are
-JSON-quoted/escaped to keep the output on one line. If `synthetic` is explicitly
-`true`, the caption also displays `synthetic=true`; absence of this optional
-key does **not** assert that the export is real. Other optional metadata
+JSON-quoted with non-ASCII escaped, so newlines, U+2028, U+2029, and lone
+surrogates stay on one UTF-8 line. If `synthetic` is `true`, the caption
+also displays `synthetic=true`. `false` and a missing key do **not** add
+that marker or claim the export is real. Any other present value raises
+`SpikeIOError`. Other optional metadata
 (`stimulus_notes`, `notes`, and exporter-specific keys) is not displayed.
 
 `dt_seconds` still means seconds per displayed step: for dimensionless

@@ -122,3 +122,61 @@ def test_caption_pinned_rate_fixture() -> None:
         'encoder="rate" | dt_seconds=0.001 | seed=1592590337 | N=8 | T=64 | '
         'axon_encoder_git_sha="908a34797c8aaff0a57e0ea4167aa00f3780c940"'
     )
+
+
+def test_caption_refuses_sidecar_that_resolves_to_metadata(meta_path: Path) -> None:
+    original = meta_path.read_bytes()
+    alias = meta_path.parent / ".." / meta_path.parent.name / meta_path.name
+    with pytest.raises(SpikeIOError, match="metadata file"):
+        spike_viz.provenance_caption(meta_path, out_path=alias)
+    assert meta_path.read_bytes() == original
+
+
+def test_caption_refuses_symlink_to_metadata(meta_path: Path, tmp_path: Path) -> None:
+    original = meta_path.read_bytes()
+    link = tmp_path / "meta-link.json"
+    link.symlink_to(meta_path)
+    with pytest.raises(SpikeIOError, match="metadata file"):
+        spike_viz.provenance_caption(meta_path, out_path=link)
+    assert meta_path.read_bytes() == original
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "escaped"),
+    [
+        ("encoder", "rate\u2028poisson", "\\u2028"),
+        ("encoder", "rate\u2029poisson", "\\u2029"),
+        ("encoder", "rate\ud800", "\\ud800"),
+        ("axon_encoder_git_sha", "abc\u2028def", "\\u2028"),
+        ("axon_encoder_git_sha", "abc\u2029def", "\\u2029"),
+        ("axon_encoder_git_sha", "abc\ud800", "\\ud800"),
+    ],
+)
+def test_caption_escapes_line_separators_and_surrogates(
+    meta_path: Path, field: str, value: str, escaped: str
+) -> None:
+    meta = json.loads(meta_path.read_text(encoding="utf-8"))
+    meta[field] = value
+    meta_path.write_text(json.dumps(meta), encoding="utf-8")
+    out = meta_path.with_suffix(".txt")
+    caption = spike_viz.provenance_caption(meta_path, out_path=out)
+    assert "\u2028" not in caption
+    assert "\u2029" not in caption
+    assert "\ud800" not in caption
+    assert "\n" not in caption
+    assert escaped in caption
+    raw = out.read_bytes()
+    assert raw.count(b"\n") == 1
+    raw.decode("utf-8")
+
+
+@pytest.mark.parametrize("value", ["true", 1, None])
+def test_caption_rejects_non_boolean_synthetic(meta_path: Path, value: object) -> None:
+    meta = json.loads(meta_path.read_text(encoding="utf-8"))
+    meta["synthetic"] = value
+    meta_path.write_text(json.dumps(meta), encoding="utf-8")
+    out = meta_path.with_suffix(".txt")
+    out.write_text("keep\n", encoding="utf-8")
+    with pytest.raises(SpikeIOError, match="synthetic"):
+        spike_viz.provenance_caption(meta_path, out_path=out)
+    assert out.read_text(encoding="utf-8") == "keep\n"
