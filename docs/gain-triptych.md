@@ -51,7 +51,12 @@ Visible captions and PNG `Description` metadata include firing-rate gains,
 modulator summaries, encoder, dt, seed, N, T and the full upstream commit.
 The renderer rejects synthetic or unpinned cases (a full commit and the
 exporter patch SHA-256), mismatched config, provenance, modulators, or
-stimuli, non-numeric gains, wrong gain order, and a nonempty zero-gain case.
+stimuli, and a nonempty zero-gain case. Firing-rate gain must be finite and
+non-negative, in the order silence 0, normal 1, elevated greater than 1.
+The other three scales must be exactly 1. Python and NumPy real numbers are
+accepted, including `np.float64` and `np.int64`. Booleans (`True` and
+`np.bool_`), non-finite values, negatives, and any non-identity scale are
+rejected even when they compare equal to a number.
 For other contract-compatible rate exports, `modulators` may contain one
 shared JSON summary object; it is displayed verbatim, not evaluated by
 Python, and wrapped to the panel so wide glyphs stay inside the figure.

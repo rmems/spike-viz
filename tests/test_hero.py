@@ -387,3 +387,47 @@ def test_gain_triptych_accepts_numpy_integer_scale(gain_cases):
     base = spike_viz.render_gain_triptych(*gain_cases, scale=1)
     scaled = spike_viz.render_gain_triptych(*gain_cases, scale=np.int64(2))
     assert scaled.size == (base.size[0] * 2, base.size[1] * 2)
+
+
+def _with_gains(case, **scales):
+    meta = deepcopy(case.meta)
+    meta["encoding_gains"] = dict(meta["encoding_gains"])
+    meta["encoding_gains"].update(scales)
+    return replace(case, meta=meta)
+
+
+def test_gain_triptych_accepts_numpy_real_gains(gain_cases):
+    # Builtin isinstance(int/float) misses these: float64 subclasses float,
+    # but float32 and the integer scalars do not.
+    identity = {
+        "threshold_scale": np.float64(1.0),
+        "sensitivity_scale": np.int64(1),
+        "latency_scale": np.float32(1.0),
+    }
+    cases = (
+        _with_gains(gain_cases[0], firing_rate_scale=np.int64(0), **identity),
+        _with_gains(gain_cases[1], firing_rate_scale=np.float32(1.0), **identity),
+        _with_gains(gain_cases[2], firing_rate_scale=np.float64(2.0), **identity),
+    )
+    image = spike_viz.render_gain_triptych(*cases)
+    caption = image.info["Description"]
+    assert "firing_rate_scale=0" in caption
+    assert "firing_rate_scale=1" in caption
+    assert "firing_rate_scale=2" in caption
+
+
+@pytest.mark.parametrize(
+    "scales, message",
+    [
+        ({"firing_rate_scale": np.float64(-1.0)}, "finite"),
+        ({"firing_rate_scale": np.float32(np.nan)}, "finite"),
+        ({"firing_rate_scale": np.bool_(True)}, "finite"),
+        ({"threshold_scale": np.int64(2)}, "identity non-rate"),
+        ({"threshold_scale": np.float64(1.5)}, "identity non-rate"),
+        ({"sensitivity_scale": np.bool_(True)}, "identity non-rate"),
+    ],
+)
+def test_gain_triptych_rejects_non_identity_numpy_gains(gain_cases, scales, message):
+    elevated = _with_gains(gain_cases[2], **scales)
+    with pytest.raises(ValueError, match=message):
+        spike_viz.render_gain_triptych(*gain_cases[:2], elevated)

@@ -225,8 +225,18 @@ def _require_same_fields(meta: dict[str, Any], reference: dict[str, Any]) -> Non
             raise ValueError(f"gain cases must have identical {key}")
 
 
+def _is_real_number(value: object) -> bool:
+    """Python or NumPy reals.
+
+    Booleans compare equal to 0 and 1, so they are not reals here.
+    """
+    if isinstance(value, (bool, np.bool_)):
+        return False
+    return isinstance(value, (int, float, np.integer, np.floating))
+
+
 def _as_finite_nonnegative(rate: object) -> float:
-    if isinstance(rate, bool) or not isinstance(rate, (int, float)):
+    if not _is_real_number(rate):
         raise ValueError("firing-rate gain must be finite and non-negative")
     try:
         rate_f = float(rate)
@@ -243,7 +253,7 @@ def _require_gain(meta: dict[str, Any]) -> float:
         raise ValueError("gain cases must document identity non-rate gains")
     for key in _IDENTITY_GAIN_KEYS:
         value = gains.get(key)
-        if isinstance(value, bool) or not isinstance(value, (int, float)) or value != 1.0:
+        if not _is_real_number(value) or value != 1.0:
             raise ValueError("gain cases must document identity non-rate gains")
     return _as_finite_nonnegative(gains.get("firing_rate_scale"))
 
