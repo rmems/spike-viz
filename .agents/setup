@@ -123,26 +123,22 @@ uv pip install --python .venv/bin/python -e ".[dev]"
 # separately. Login shells get these directories from /etc/profile.d, and every other
 # shell finds the entry points through symlinks in /usr/local/bin (on the default PATH).
 # In login shells the venv's bin comes first, so python3 is the venv's Python.
-# Non-login shells do not read profile.d, so python and python3 are linked into
-# /usr/local/bin. pip and the venv activation scripts stay unlinked.
+# Non-login shells do not read profile.d. Link only uv, uvx, python, and
+# python3 into /usr/local/bin. python and python3 come from the venv.
 repo_root="$(pwd)"
 tool_dirs=("$repo_root/.venv/bin" "$HOME/.local/bin")
 # shellcheck disable=SC2016 # $PATH must expand when the profile is sourced, not now.
 printf 'export PATH=%q:$PATH\n' "$(IFS=:; echo "${tool_dirs[*]}")" |
   $SUDO tee /etc/profile.d/amp-orb-spike-viz.sh >/dev/null
-for dir in "${tool_dirs[@]}"; do
-  [ -d "$dir" ] || continue
-  for tool in "$dir"/*; do
-    name="${tool##*/}"
-    case "$name" in
-      # uv's installer also drops env/env.fish (sourced, not run) in ~/.local/bin.
-      # python and python3 are linked so a non-login shell uses the venv.
-      pip* | activate* | deactivate | Activate.ps1 | env | env.fish) continue ;;
-    esac
-    if [ -f "$tool" ] && [ -x "$tool" ]; then
-      $SUDO ln -sfn "$tool" "/usr/local/bin/$name"
-    fi
-  done
-done
+link_named() {
+  local tool="$1/$2"
+  if [ -f "$tool" ] && [ -x "$tool" ]; then
+    $SUDO ln -sfn "$tool" "/usr/local/bin/$2"
+  fi
+}
+link_named "$HOME/.local/bin" uv
+link_named "$HOME/.local/bin" uvx
+link_named "$repo_root/.venv/bin" python
+link_named "$repo_root/.venv/bin" python3
 
 echo "Amp orb setup for spike-viz finished."
