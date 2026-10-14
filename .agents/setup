@@ -123,8 +123,9 @@ uv pip install --python .venv/bin/python -e ".[dev]"
 # separately. Login shells get these directories from /etc/profile.d, and every other
 # shell finds the entry points through symlinks in /usr/local/bin (on the default PATH).
 # In login shells the venv's bin comes first, so python3 is the venv's Python.
-# Non-login shells do not read profile.d. Link only uv, uvx, python, and
-# python3 into /usr/local/bin. python and python3 come from the venv.
+# Non-login shells do not read profile.d. Link only uv, uvx, python,
+# python3, and pytest into /usr/local/bin. python, python3, and pytest
+# come from the venv.
 repo_root="$(pwd)"
 tool_dirs=("$repo_root/.venv/bin" "$HOME/.local/bin")
 # shellcheck disable=SC2016 # $PATH must expand when the profile is sourced, not now.
@@ -140,5 +141,6 @@ link_named "$HOME/.local/bin" uv
 link_named "$HOME/.local/bin" uvx
 link_named "$repo_root/.venv/bin" python
 link_named "$repo_root/.venv/bin" python3
+link_named "$repo_root/.venv/bin" pytest
 
 echo "Amp orb setup for spike-viz finished."
