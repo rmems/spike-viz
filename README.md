@@ -44,5 +44,15 @@ case = load_axon_export("fixtures/axon-encoder/rate/tiny_synthetic")
 print(case.meta["encoder"], len(case.events))
 ```
 
-Package renderers and hero stills land under later `v0.1` / `v0.2` issues
-([tracker](https://github.com/rmems/spike-viz/issues)).
+## Rate vs Poisson hero
+
+![Rate deterministic streaming vs Poisson stochastic raster](docs/images/rate-vs-poisson.png)
+
+The same provenance-pinned Rust stimulus, shown with shared time/neuron scales:
+deterministic **streaming** Rate vs seeded stochastic Poisson. Captions include
+encoder, seed, `dt_seconds`, N, T, and the full axon-encoder commit. These fixtures
+use different rate mappings, so this is not a parameter-matched experiment.
+
+See [the hero guide](docs/rate-vs-poisson-hero.md) for the rendering command,
+exact axon-encoder source, and fixture regeneration instructions. No Python
+re-encoding, synthetic fallback, or GPU required.
