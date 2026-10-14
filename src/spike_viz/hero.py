@@ -5,10 +5,9 @@ from __future__ import annotations
 import json
 import math
 import re
-import textwrap
 from decimal import Decimal
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont, PngImagePlugin
@@ -181,93 +180,201 @@ def render_rate_poisson_hero(
     return image
 
 
+_GIT_SHA = re.compile(r"[0-9a-f]{40}")
+_PATCH_SHA256 = re.compile(r"[0-9a-f]{64}")
+_SHARED_META_KEYS = (
+    "encoder",
+    "encoder_config",
+    "dt_seconds",
+    "seed",
+    "n_neurons",
+    "n_steps",
+    "axon_encoder_git_sha",
+    "schema_version",
+    "axon_encoder_version",
+    "exporter_patch_sha256",
+)
+_IDENTITY_GAIN_KEYS = ("threshold_scale", "sensitivity_scale", "latency_scale")
+_PANEL_MARGIN = 24
+_BACKGROUND = (8, 12, 24)
+
+
+def _require_hex(value: object, pattern: re.Pattern[str], message: str) -> None:
+    if not isinstance(value, str) or pattern.fullmatch(value) is None:
+        raise ValueError(message)
+
+
+def _require_real_pinned_rate(meta: dict[str, Any]) -> None:
+    if meta.get("synthetic") is not False or meta.get("encoder") != "rate":
+        raise ValueError("gain triptych requires real rate encoder exports")
+    _require_hex(
+        meta.get("axon_encoder_git_sha"),
+        _GIT_SHA,
+        "gain triptych requires a full axon-encoder commit",
+    )
+    _require_hex(
+        meta.get("exporter_patch_sha256"),
+        _PATCH_SHA256,
+        "gain triptych requires the exporter patch SHA-256",
+    )
+
+
+def _require_same_fields(meta: dict[str, Any], reference: dict[str, Any]) -> None:
+    for key in _SHARED_META_KEYS:
+        if key not in meta or meta[key] != reference.get(key):
+            raise ValueError(f"gain cases must have identical {key}")
+
+
+def _as_finite_nonnegative(rate: object) -> float:
+    if isinstance(rate, bool) or not isinstance(rate, (int, float)):
+        raise ValueError("firing-rate gain must be finite and non-negative")
+    try:
+        rate_f = float(rate)
+    except OverflowError as exc:
+        raise ValueError("firing-rate gain must be finite and non-negative") from exc
+    if not math.isfinite(rate_f) or rate_f < 0:
+        raise ValueError("firing-rate gain must be finite and non-negative")
+    return rate_f
+
+
+def _require_gain(meta: dict[str, Any]) -> float:
+    gains = meta.get("encoding_gains")
+    if not isinstance(gains, dict):
+        raise ValueError("gain cases must document identity non-rate gains")
+    for key in _IDENTITY_GAIN_KEYS:
+        value = gains.get(key)
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or value != 1.0:
+            raise ValueError("gain cases must document identity non-rate gains")
+    return _as_finite_nonnegative(gains.get("firing_rate_scale"))
+
+
+def _require_modulators(meta: dict[str, Any], reference: dict[str, Any]) -> None:
+    if "modulators" not in meta:
+        raise ValueError("modulators must document a summary object or null")
+    mods = meta["modulators"]
+    if mods is not None and not isinstance(mods, dict):
+        raise ValueError("modulators must document a summary object or null")
+    if mods != reference["modulators"]:
+        raise ValueError("gain cases must have identical modulators")
+
+
+def _require_stimulus(
+    case: AxonExportCase, stimulus: np.ndarray | None
+) -> np.ndarray:
+    if case.stimulus_path is None:
+        raise ValueError("gain comparison requires exported stimulus.npy")
+    current = np.load(case.stimulus_path, allow_pickle=False)
+    meta = case.meta
+    if current.shape != (meta["n_steps"], meta["n_neurons"]):
+        raise ValueError("rate stimulus must have shape [T, N]")
+    if stimulus is not None and not np.array_equal(stimulus, current):
+        raise ValueError("gain cases must have identical stimulus arrays")
+    return current
+
+
+def _require_gain_order(rates: list[float], silence: AxonExportCase) -> None:
+    if rates[0] != 0 or rates[1] != 1 or rates[2] <= 1:
+        raise ValueError("expected gains: silence=0, normal=1, elevated>1")
+    if len(silence.events):
+        raise ValueError("zero-gain silence export must contain no events")
+
+
 def _validate_gain_cases(cases: tuple[AxonExportCase, ...]) -> list[float]:
     """Reject comparisons that could imply a gain effect from unrelated data."""
     reference = cases[0].meta
-    common = (
-        "encoder",
-        "encoder_config",
-        "dt_seconds",
-        "seed",
-        "n_neurons",
-        "n_steps",
-        "axon_encoder_git_sha",
-    )
     stimulus = None
     rates = []
     for case in cases:
         meta = case.meta
-        if meta.get("synthetic") is not False or meta.get("encoder") != "rate":
-            raise ValueError("gain triptych requires real rate encoder exports")
-        sha = meta.get("axon_encoder_git_sha")
-        if not isinstance(sha, str) or re.fullmatch(r"[0-9a-f]{40}", sha) is None:
-            raise ValueError("gain triptych requires a full axon-encoder commit")
-        for key in common:
-            if key not in meta or meta[key] != reference.get(key):
-                raise ValueError(f"gain cases must have identical {key}")
-        for key in ("schema_version", "axon_encoder_version", "exporter_patch_sha256"):
-            if meta.get(key) != reference.get(key):
-                raise ValueError(f"gain cases must have identical {key}")
-        gains = meta.get("encoding_gains")
-        if not isinstance(gains, dict) or any(
-            gains.get(key) != 1.0
-            for key in ("threshold_scale", "sensitivity_scale", "latency_scale")
-        ):
-            raise ValueError("gain cases must document identity non-rate gains")
-        rate = gains.get("firing_rate_scale")
-        if (
-            isinstance(rate, bool)
-            or not isinstance(rate, (int, float))
-            or not math.isfinite(rate)
-            or rate < 0
-        ):
-            raise ValueError("firing-rate gain must be finite and non-negative")
-        rates.append(float(rate))
-        if "modulators" not in meta or (
-            meta["modulators"] is not None and not isinstance(meta["modulators"], dict)
-        ):
-            raise ValueError("modulators must document a summary object or null")
-        if case.stimulus_path is None:
-            raise ValueError("gain comparison requires exported stimulus.npy")
-        current = np.load(case.stimulus_path, allow_pickle=False)
-        if current.shape != (meta["n_steps"], meta["n_neurons"]):
-            raise ValueError("rate stimulus must have shape [T, N]")
-        if stimulus is not None and not np.array_equal(stimulus, current):
-            raise ValueError("gain cases must have identical stimulus arrays")
-        stimulus = current
-    if rates[0] != 0 or rates[1] != 1 or rates[2] <= 1:
-        raise ValueError("expected gains: silence=0, normal=1, elevated>1")
-    if len(cases[0].events):
-        raise ValueError("zero-gain silence export must contain no events")
+        _require_real_pinned_rate(meta)
+        _require_same_fields(meta, reference)
+        rates.append(_require_gain(meta))
+        _require_modulators(meta, reference)
+        stimulus = _require_stimulus(case, stimulus)
+    _require_gain_order(rates, cases[0])
     return rates
+
+
+def _text_width(font: ImageFont.ImageFont, text: str) -> float:
+    return float(font.getlength(text))
+
+
+def _widest_glyph(font: ImageFont.ImageFont, texts: list[str]) -> int:
+    widest = 1
+    for text in texts:
+        for char in text:
+            widest = max(widest, math.ceil(_text_width(font, char)))
+    return widest
+
+
+def _wrap_text(text: str, font: ImageFont.ImageFont, max_width: int) -> list[str]:
+    """Wrap ``text`` so each line's advance fits ``max_width`` pixels."""
+    lines: list[str] = []
+    current = ""
+    for char in text:
+        if char.isspace() and not current:
+            continue
+        trial = current + char
+        if current and _text_width(font, trial) > max_width:
+            lines.append(current.rstrip())
+            current = "" if char.isspace() else char
+            continue
+        current = trial
+    if current.strip():
+        lines.append(current.rstrip())
+    return lines or [""]
+
+
+def _display_captions(
+    captions: list[list[str]], font: ImageFont.ImageFont, panel_w: int
+) -> tuple[list[list[str]], int]:
+    texts = [text for caption in captions for text in caption]
+    content_w = max(panel_w - 2 * _PANEL_MARGIN, _widest_glyph(font, texts))
+    wrapped: list[list[str]] = []
+    for caption in captions:
+        lines: list[str] = []
+        for text in caption:
+            lines.extend(_wrap_text(text, font, content_w))
+        wrapped.append(lines)
+    return wrapped, content_w + 2 * _PANEL_MARGIN
+
+
+def _require_display_scale(scale: object) -> int:
+    if (
+        isinstance(scale, (bool, np.bool_))
+        or not isinstance(scale, (int, np.integer))
+        or scale < 1
+    ):
+        raise ValueError("scale must be an integer >= 1")
+    return int(scale)
 
 
 def render_gain_triptych(
     silence: AxonExportCase,
     normal: AxonExportCase,
     elevated: AxonExportCase,
-    *,
     out_path: PathLike | None = None,
     scale: int = 2,
 ) -> Image.Image:
     """Render three real, same-stimulus rate exports and their provenance.
 
-    Cases must share encoder config, dt, seed, N, T and a full upstream commit,
-    include identical ``stimulus.npy`` arrays, and document ``encoding_gains``
-    (identity except firing-rate scales 0, 1, >1) and ``modulators`` (null for
-    direct gains, or a summary object). Invalid comparisons raise ValueError.
+    Cases must share encoder config, dt, seed, N, T, a full upstream commit,
+    and the exporter patch SHA-256. They must include identical ``stimulus.npy``
+    arrays and identical ``modulators`` (null for direct gains, or one shared
+    summary object), and document numeric ``encoding_gains`` (identity except
+    firing-rate scales 0, 1, >1). Invalid comparisons raise ValueError.
 
     Cyan bins show event presence, independent of amplitude/polarity; duplicate
     events share a bin. No gain scaling, resampling, jitter or bloom is applied
     to the spikes. Time is horizontal, neuron is vertical, with identical axes.
     Captions are visible and also stored in PNG ``Description`` metadata.
-    ``scale`` is a positive integer nearest-neighbor enlargement of the figure.
-    CPU only; fonts use Pillow's built-in default, with no system font dependency.
+    ``scale`` is a positive integer nearest-neighbor enlargement, including
+    NumPy integers. CPU only; fonts use Pillow's built-in default, with no
+    system font dependency.
     """
     cases = (silence, normal, elevated)
     rates = _validate_gain_cases(cases)
-    if isinstance(scale, bool) or not isinstance(scale, int) or scale < 1:
-        raise ValueError("scale must be an integer >= 1")
+    scale = _require_display_scale(scale)
 
     meta = silence.meta
     rasters = [
@@ -281,14 +388,10 @@ def render_gain_triptych(
     ]
     font = ImageFont.load_default()
     raster_w, raster_h = rasters[0].size
-    panel_w = max(240, raster_w + 48)
-    wrap_width = (panel_w - 48) // 6
     captions = []
     for label, rate, case in zip(("Silence", "Normal", "Elevated"), rates, cases):
         mods = case.meta["modulators"]
-        summary = (
-            "none (direct gains)" if mods is None else json.dumps(mods, sort_keys=True)
-        )
+        summary = "none (direct gains)" if mods is None else json.dumps(mods, sort_keys=True)
         captions.append(
             [
                 label,
@@ -297,10 +400,9 @@ def render_gain_triptych(
                 f"{len(case.events)} exported events",
             ]
         )
-    display_captions = [
-        [line for text in caption for line in textwrap.wrap(text, width=wrap_width)]
-        for caption in captions
-    ]
+    display_captions, panel_w = _display_captions(
+        captions, font, max(240, raster_w + 2 * _PANEL_MARGIN)
+    )
     raster_y = 30 + 16 * max(map(len, display_captions))
     footer_y = raster_y + raster_h + 42
     provenance = [
@@ -311,10 +413,10 @@ def render_gain_triptych(
         f"axon-encoder commit: {meta['axon_encoder_git_sha']}",
         "Same stimulus / config; binary event occupancy; no Python encoding.",
     ]
-    image = Image.new("RGB", (3 * panel_w, footer_y + 64), (8, 12, 24))
+    image = Image.new("RGB", (3 * panel_w, footer_y + 64), _BACKGROUND)
     draw = ImageDraw.Draw(image)
     for index, (raster, caption) in enumerate(zip(rasters, display_captions)):
-        x = index * panel_w + 24
+        x = index * panel_w + _PANEL_MARGIN
         draw.multiline_text(
             (x, 16), "\n".join(caption), font=font, fill=(225, 235, 250), spacing=6
         )
@@ -332,15 +434,13 @@ def render_gain_triptych(
             fill=(150, 165, 190),
         )
     draw.multiline_text(
-        (24, footer_y),
+        (_PANEL_MARGIN, footer_y),
         "\n".join(provenance),
         font=font,
         fill=(180, 195, 215),
         spacing=6,
     )
-    image = image.resize(
-        (image.width * scale, image.height * scale), Image.Resampling.NEAREST
-    )
+    image = image.resize((image.width * scale, image.height * scale), Image.Resampling.NEAREST)
     description = "\n\n".join("\n".join(caption) for caption in captions)
     description += "\n\n" + "\n".join(provenance)
     image.info["Description"] = description

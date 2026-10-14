@@ -10,7 +10,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-from PIL import Image
+from PIL import Image, ImageFont
 
 import spike_viz
 from spike_viz import hero
@@ -318,3 +318,72 @@ def test_gain_triptych_captions_exported_modulator_summary(gain_cases):
     assert (
         'modulators: {"dopamine": 0.25, "serotonin": 0.75}' in image.info["Description"]
     )
+
+
+@pytest.mark.parametrize(
+    "key",
+    ["threshold_scale", "sensitivity_scale", "latency_scale"],
+)
+def test_gain_triptych_rejects_boolean_identity_gains(gain_cases, key):
+    meta = deepcopy(gain_cases[2].meta)
+    meta["encoding_gains"] = dict(meta["encoding_gains"])
+    meta["encoding_gains"][key] = True
+    elevated = replace(gain_cases[2], meta=meta)
+    with pytest.raises(ValueError, match="identity non-rate"):
+        spike_viz.render_gain_triptych(*gain_cases[:2], elevated)
+
+
+def test_gain_triptych_rejects_overflowing_firing_rate_gain(gain_cases):
+    meta = deepcopy(gain_cases[1].meta)
+    meta["encoding_gains"] = dict(meta["encoding_gains"])
+    meta["encoding_gains"]["firing_rate_scale"] = 10**1000
+    normal = replace(gain_cases[1], meta=meta)
+    with pytest.raises(ValueError, match="finite"):
+        spike_viz.render_gain_triptych(gain_cases[0], normal, gain_cases[2])
+
+
+def test_gain_triptych_rejects_differing_modulators(gain_cases):
+    cases = []
+    for index, case in enumerate(gain_cases):
+        meta = deepcopy(case.meta)
+        meta["modulators"] = {"dopamine": 0.25 if index < 2 else 0.75}
+        cases.append(replace(case, meta=meta))
+    with pytest.raises(ValueError, match="identical modulators"):
+        spike_viz.render_gain_triptych(*cases)
+
+
+@pytest.mark.parametrize("digest", [None, "not-a-digest", "A" * 64, "0" * 63])
+def test_gain_triptych_rejects_unpinned_exporter_patch(gain_cases, digest):
+    cases = []
+    for case in gain_cases:
+        meta = deepcopy(case.meta)
+        if digest is None:
+            del meta["exporter_patch_sha256"]
+        else:
+            meta["exporter_patch_sha256"] = digest
+        cases.append(replace(case, meta=meta))
+    with pytest.raises(ValueError, match="SHA-256"):
+        spike_viz.render_gain_triptych(*cases)
+
+
+def test_gain_triptych_wraps_wide_modulator_captions(gain_cases):
+    wide = "W" * 80
+    cases = []
+    for case in gain_cases:
+        meta = deepcopy(case.meta)
+        meta["modulators"] = {wide: 1}
+        cases.append(replace(case, meta=meta))
+    image = spike_viz.render_gain_triptych(*cases, scale=1)
+    plain = spike_viz.render_gain_triptych(*gain_cases, scale=1)
+    assert image.size[0] == plain.size[0]
+    assert ImageFont.load_default().getlength(wide) > image.size[0] / 3
+    pixels = np.asarray(image)
+    margin = pixels[0, -1]
+    assert np.all(pixels[:, -16:] == margin)
+    assert wide in image.info["Description"]
+
+
+def test_gain_triptych_accepts_numpy_integer_scale(gain_cases):
+    base = spike_viz.render_gain_triptych(*gain_cases, scale=1)
+    scaled = spike_viz.render_gain_triptych(*gain_cases, scale=np.int64(2))
+    assert scaled.size == (base.size[0] * 2, base.size[1] * 2)

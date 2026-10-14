@@ -49,10 +49,12 @@ event counts, not a count of bright pixels.
 
 Visible captions and PNG `Description` metadata include firing-rate gains,
 modulator summaries, encoder, dt, seed, N, T and the full upstream commit.
-The renderer rejects synthetic/unpinned cases, mismatched config/provenance
-or stimuli, wrong gain order, and a nonempty zero-gain case. For other
-contract-compatible rate exports, `modulators` may contain a JSON summary
-object; it is displayed verbatim, not evaluated by Python.
+The renderer rejects synthetic or unpinned cases (a full commit and the
+exporter patch SHA-256), mismatched config, provenance, modulators, or
+stimuli, non-numeric gains, wrong gain order, and a nonempty zero-gain case.
+For other contract-compatible rate exports, `modulators` may contain one
+shared JSON summary object; it is displayed verbatim, not evaluated by
+Python, and wrapped to the panel so wide glyphs stay inside the figure.
 
 ## Reproduce the fixtures
 
