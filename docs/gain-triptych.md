@@ -54,9 +54,12 @@ exporter patch SHA-256), mismatched config, provenance, modulators, or
 stimuli, and a nonempty zero-gain case. Firing-rate gain must be finite and
 non-negative, in the order silence 0, normal 1, elevated greater than 1.
 The other three scales must be exactly 1. Python and NumPy real numbers are
-accepted, including `np.float64` and `np.int64`. Booleans (`True` and
-`np.bool_`), non-finite values, negatives, and any non-identity scale are
-rejected even when they compare equal to a number.
+accepted, including `np.float64` and `np.int64`, only when the value is
+unchanged as a Python float. Booleans (`True` and `np.bool_`), non-finite
+values, negatives, any non-identity scale, and numbers that collapse when
+narrowed (an extended-precision value just above 1, or `1e-400` becoming 0)
+are rejected even when the narrowed float would look like a valid gain.
+
 For other contract-compatible rate exports, `modulators` may contain one
 shared JSON summary object; it is displayed verbatim, not evaluated by
 Python, and wrapped to the panel so wide glyphs stay inside the figure.

@@ -431,3 +431,27 @@ def test_gain_triptych_rejects_non_identity_numpy_gains(gain_cases, scales, mess
     elevated = _with_gains(gain_cases[2], **scales)
     with pytest.raises(ValueError, match=message):
         spike_viz.render_gain_triptych(*gain_cases[:2], elevated)
+
+
+def test_gain_triptych_rejects_gains_that_collapse_to_float(gain_cases):
+    # 2**53 + 1 narrows to 2**53, which would still pass the elevated check.
+    collapsed = _with_gains(gain_cases[2], firing_rate_scale=2**53 + 1)
+    with pytest.raises(ValueError, match="finite"):
+        spike_viz.render_gain_triptych(*gain_cases[:2], collapsed)
+
+    exact = _with_gains(gain_cases[2], firing_rate_scale=np.longdouble(2))
+    image = spike_viz.render_gain_triptych(*gain_cases[:2], exact)
+    assert "firing_rate_scale=2" in image.info["Description"]
+
+    if np.finfo(np.longdouble).eps >= np.finfo(float).eps:
+        return
+    near_one = np.longdouble(1) + np.finfo(np.longdouble).eps
+    assert float(near_one) == 1.0 and near_one != 1.0
+    normal = _with_gains(gain_cases[1], firing_rate_scale=near_one)
+    with pytest.raises(ValueError, match="finite"):
+        spike_viz.render_gain_triptych(gain_cases[0], normal, gain_cases[2])
+    tiny = np.longdouble("1e-400")
+    assert float(tiny) == 0.0 and tiny != 0.0
+    silence = _with_gains(gain_cases[0], firing_rate_scale=tiny)
+    with pytest.raises(ValueError, match="finite"):
+        spike_viz.render_gain_triptych(silence, *gain_cases[1:])
