@@ -433,6 +433,20 @@ def test_gain_triptych_rejects_non_identity_numpy_gains(gain_cases, scales, mess
         spike_viz.render_gain_triptych(*gain_cases[:2], elevated)
 
 
+@pytest.mark.parametrize(
+    "rate",
+    [np.int64(2**53 + 1), np.uint64(2**64 - 1)],
+)
+def test_gain_triptych_rejects_numpy_integers_that_collapse(gain_cases, rate):
+    # NumPy integer == float narrows the integer, so these compare equal to the
+    # rounded float and would be captioned as a different gain.
+    assert int(rate) != float(rate)
+    assert rate == float(rate)
+    elevated = _with_gains(gain_cases[2], firing_rate_scale=rate)
+    with pytest.raises(ValueError, match="finite"):
+        spike_viz.render_gain_triptych(*gain_cases[:2], elevated)
+
+
 def test_gain_triptych_rejects_gains_that_collapse_to_float(gain_cases):
     # 2**53 + 1 narrows to 2**53, which would still pass the elevated check.
     collapsed = _with_gains(gain_cases[2], firing_rate_scale=2**53 + 1)

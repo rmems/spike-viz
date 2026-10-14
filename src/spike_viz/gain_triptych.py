@@ -13,6 +13,7 @@ from PIL import Image, ImageDraw, ImageFont, PngImagePlugin
 
 from spike_viz.events import SpikeEvents
 from spike_viz.export import AxonExportCase
+from spike_viz.gain_captions import PANEL_MARGIN, display_captions
 from spike_viz.render import PathLike, render_raster
 
 _GIT_SHA = re.compile(r"[0-9a-f]{40}")
@@ -30,7 +31,6 @@ _SHARED_META_KEYS = (
     "exporter_patch_sha256",
 )
 _IDENTITY_GAIN_KEYS = ("threshold_scale", "sensitivity_scale", "latency_scale")
-_PANEL_MARGIN = 24
 _BACKGROUND = (8, 12, 24)
 
 
@@ -70,6 +70,17 @@ def _is_real_number(value: object) -> bool:
     return isinstance(value, (int, float, np.integer, np.floating))
 
 
+def _matches_python_float(rate: object, rate_f: float) -> bool:
+    """True when ``rate`` is the same number as the narrowed float.
+
+    NumPy integers compare equal to a float they do not round-trip to, because
+    that comparison narrows the integer first. Python ``int`` does not.
+    """
+    if isinstance(rate, np.integer):
+        return int(rate) == rate_f
+    return rate == rate_f
+
+
 def _as_finite_nonnegative(rate: object) -> float:
     if not _is_real_number(rate):
         raise ValueError("firing-rate gain must be finite and non-negative")
@@ -77,9 +88,11 @@ def _as_finite_nonnegative(rate: object) -> float:
         rate_f = float(rate)
     except OverflowError as exc:
         raise ValueError("firing-rate gain must be finite and non-negative") from exc
-    # Compare before trusting the narrowed value. longdouble near 0 or 1, and
-    # integers above 2**53, become a different Python float.
-    if not math.isfinite(rate_f) or rate_f < 0 or rate != rate_f:
+    if (
+        not math.isfinite(rate_f)
+        or rate_f < 0
+        or not _matches_python_float(rate, rate_f)
+    ):
         raise ValueError("firing-rate gain must be finite and non-negative")
     return rate_f
 
@@ -140,50 +153,6 @@ def _validate_gain_cases(cases: tuple[AxonExportCase, ...]) -> list[float]:
         stimulus = _require_stimulus(case, stimulus)
     _require_gain_order(rates, cases[0])
     return rates
-
-
-def _text_width(font: ImageFont.ImageFont, text: str) -> float:
-    return float(font.getlength(text))
-
-
-def _widest_glyph(font: ImageFont.ImageFont, texts: list[str]) -> int:
-    widest = 1
-    for text in texts:
-        for char in text:
-            widest = max(widest, math.ceil(_text_width(font, char)))
-    return widest
-
-
-def _wrap_text(text: str, font: ImageFont.ImageFont, max_width: int) -> list[str]:
-    """Wrap ``text`` so each line's advance fits ``max_width`` pixels."""
-    lines: list[str] = []
-    current = ""
-    for char in text:
-        if char.isspace() and not current:
-            continue
-        trial = current + char
-        if current and _text_width(font, trial) > max_width:
-            lines.append(current.rstrip())
-            current = "" if char.isspace() else char
-            continue
-        current = trial
-    if current.strip():
-        lines.append(current.rstrip())
-    return lines or [""]
-
-
-def _display_captions(
-    captions: list[list[str]], font: ImageFont.ImageFont, panel_w: int
-) -> tuple[list[list[str]], int]:
-    texts = [text for caption in captions for text in caption]
-    content_w = max(panel_w - 2 * _PANEL_MARGIN, _widest_glyph(font, texts))
-    wrapped: list[list[str]] = []
-    for caption in captions:
-        lines: list[str] = []
-        for text in caption:
-            lines.extend(_wrap_text(text, font, content_w))
-        wrapped.append(lines)
-    return wrapped, content_w + 2 * _PANEL_MARGIN
 
 
 def _require_display_scale(scale: object) -> int:
@@ -247,10 +216,10 @@ def render_gain_triptych(
                 f"{len(case.events)} exported events",
             ]
         )
-    display_captions, panel_w = _display_captions(
-        captions, font, max(240, raster_w + 2 * _PANEL_MARGIN)
+    wrapped, panel_w = display_captions(
+        captions, font, max(240, raster_w + 2 * PANEL_MARGIN)
     )
-    raster_y = 30 + 16 * max(map(len, display_captions))
+    raster_y = 30 + 16 * max(map(len, wrapped))
     footer_y = raster_y + raster_h + 42
     provenance = [
         (
@@ -262,8 +231,8 @@ def render_gain_triptych(
     ]
     image = Image.new("RGB", (3 * panel_w, footer_y + 64), _BACKGROUND)
     draw = ImageDraw.Draw(image)
-    for index, (raster, caption) in enumerate(zip(rasters, display_captions)):
-        x = index * panel_w + _PANEL_MARGIN
+    for index, (raster, caption) in enumerate(zip(rasters, wrapped)):
+        x = index * panel_w + PANEL_MARGIN
         draw.multiline_text(
             (x, 16), "\n".join(caption), font=font, fill=(225, 235, 250), spacing=6
         )
@@ -281,7 +250,7 @@ def render_gain_triptych(
             fill=(150, 165, 190),
         )
     draw.multiline_text(
-        (_PANEL_MARGIN, footer_y),
+        (PANEL_MARGIN, footer_y),
         "\n".join(provenance),
         font=font,
         fill=(180, 195, 215),

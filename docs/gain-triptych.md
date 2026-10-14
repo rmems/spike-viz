@@ -57,7 +57,8 @@ The other three scales must be exactly 1. Python and NumPy real numbers are
 accepted, including `np.float64` and `np.int64`, only when the value is
 unchanged as a Python float. Booleans (`True` and `np.bool_`), non-finite
 values, negatives, any non-identity scale, and numbers that collapse when
-narrowed (an extended-precision value just above 1, or `1e-400` becoming 0)
+narrowed (an extended-precision value just above 1, `1e-400` becoming 0,
+or a NumPy integer such as `np.int64(2**53 + 1)`)
 are rejected even when the narrowed float would look like a valid gain.
 
 For other contract-compatible rate exports, `modulators` may contain one
