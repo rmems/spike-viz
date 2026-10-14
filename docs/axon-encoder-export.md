@@ -131,9 +131,13 @@ Missing `spikes.npz` / `meta.json` → `SpikeIOError` (not empty spikes).
 `provenance_caption(meta_path, *, out_path=None)` reads and validates the
 reconciled schema 1.0 `meta.json` using the same loader as `load_axon_export`.
 It returns a deterministic, single-line human-readable caption in fixed field
-order, independent of JSON key order. An optional `out_path` writes a UTF-8
-plain-text sidecar with a trailing newline; parent directories must exist.
-The original `meta.json` remains the machine-readable provenance source.
+order, independent of JSON key order. An optional `out_path` is `expanduser()`-expanded and resolved to an
+absolute path before metadata is read, so `..` is collapsed before any write.
+The parent directory must already exist; a missing parent raises `OSError`
+and no sidecar is created. When the parent exists, the sidecar is UTF-8
+plain text with a trailing newline, written only after metadata validation
+succeeds. The original `meta.json` remains the machine-readable provenance
+source.
 
 Required metadata keys are `schema_version`, `encoder`, `dt_seconds`, `seed`,
 `n_neurons`, and `n_steps`, with the types and constraints in the table above.

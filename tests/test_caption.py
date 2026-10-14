@@ -91,3 +91,34 @@ def test_caption_invalid_metadata_does_not_overwrite_sidecar(meta_path: Path) ->
 def test_caption_missing_metadata_fails(tmp_path: Path) -> None:
     with pytest.raises(SpikeIOError, match="not found"):
         spike_viz.provenance_caption(tmp_path / "missing.json")
+
+
+def test_caption_collapses_parent_segments(meta_path: Path, tmp_path: Path) -> None:
+    nested = tmp_path / "nested"
+    nested.mkdir()
+    caption = spike_viz.provenance_caption(
+        meta_path, out_path=nested / ".." / "caption.txt"
+    )
+    written = tmp_path / "caption.txt"
+    assert written.read_text(encoding="utf-8") == caption + "\n"
+    assert not (nested / "caption.txt").exists()
+
+
+def test_caption_missing_parent_raises_before_metadata(tmp_path: Path) -> None:
+    # Path checks happen before metadata validation, so a missing parent
+    # fails even when meta.json is also invalid.
+    meta = tmp_path / "meta.json"
+    meta.write_text("{}", encoding="utf-8")
+    out = tmp_path / "missing" / "caption.txt"
+    with pytest.raises(OSError, match="Parent directory does not exist"):
+        spike_viz.provenance_caption(meta, out_path=out)
+    assert not out.exists()
+
+
+def test_caption_pinned_rate_fixture() -> None:
+    assert spike_viz.provenance_caption(
+        "fixtures/axon-encoder/rate/shared_sine_v1/meta.json"
+    ) == (
+        'encoder="rate" | dt_seconds=0.001 | seed=1592590337 | N=8 | T=64 | '
+        'axon_encoder_git_sha="908a34797c8aaff0a57e0ea4167aa00f3780c940"'
+    )
