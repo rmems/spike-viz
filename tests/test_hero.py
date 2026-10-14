@@ -11,6 +11,7 @@ import pytest
 from PIL import Image
 
 import spike_viz
+from spike_viz import hero
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures" / "axon-encoder"
 
@@ -133,6 +134,52 @@ def test_hero_requires_same_stimulus_and_no_fallback(tmp_path: Path) -> None:
             case,
             rate_mode="streaming",
         )
+
+
+def test_hero_round_trips_precise_sampling_interval(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Default ``g`` keeps six significant digits: 0.00123456789 paints as
+    # 0.00123457, and the shared time endpoint 79.01234496 ms paints as 79.0123.
+    dt = 0.00123456789
+    cases = []
+    for encoder in ("rate", "poisson"):
+        case = tmp_path / encoder
+        shutil.copytree(FIXTURES / encoder / "shared_sine_v1", case)
+        meta_path = case / "meta.json"
+        meta = json.loads(meta_path.read_text())
+        meta["dt_seconds"] = dt
+        meta_path.write_text(json.dumps(meta))
+        cases.append(case)
+
+    drawn: list[str] = []
+    real_draw = hero.ImageDraw.Draw
+
+    def factory(image: Image.Image):
+        delegate = real_draw(image)
+
+        class _Proxy:
+            def text(self, xy, text, *args, **kwargs):
+                drawn.append(str(text))
+                return delegate.text(xy, text, *args, **kwargs)
+
+            def multiline_text(self, xy, text, *args, **kwargs):
+                drawn.append(str(text))
+                return delegate.multiline_text(xy, text, *args, **kwargs)
+
+            def __getattr__(self, name):
+                return getattr(delegate, name)
+
+        return _Proxy()
+
+    monkeypatch.setattr(hero.ImageDraw, "Draw", factory)
+    image = spike_viz.render_rate_poisson_hero(*cases, rate_mode="streaming")
+    painted = "\n".join(drawn)
+    description = image.info["Description"]
+    assert description.count("dt_seconds=0.00123456789") == 2
+    assert "dt_seconds=0.00123457" not in description
+    assert painted.count("79.01234496 ms") == 2
+    assert "79.0123 ms" not in painted
 
 
 def test_hero_rate_mode_must_be_explicit_and_valid() -> None:

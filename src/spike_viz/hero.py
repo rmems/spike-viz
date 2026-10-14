@@ -14,6 +14,18 @@ from spike_viz.io import SpikeIOError, load_dense
 from spike_viz.render import PathLike, render_raster
 
 
+def _format_number(value: float) -> str:
+    """Shortest round-trip text, without a trailing ``.0`` on whole numbers.
+
+    Default ``g`` formatting keeps six significant digits, so a precise
+    ``dt_seconds`` would be painted as a different interval.
+    """
+    text = format(float(value), "")
+    if text.endswith(".0") and text[:-2].lstrip("-").isdigit():
+        return text[:-2]
+    return text
+
+
 def _stimulus_for_encoder(case: AxonExportCase, encoder: str) -> np.ndarray:
     """Return the finite ``[T, N]`` stimulus for one real, pinned export."""
     if case.meta["encoder"] != encoder:
@@ -106,7 +118,7 @@ def render_rate_poisson_hero(
         )
         draw.text((x, height + 84), "0 ms", font=font, fill="#a5b6cc")
         duration_ms = meta["n_steps"] * meta["dt_seconds"] * 1000
-        end_label = f"{duration_ms:g} ms"
+        end_label = f"{_format_number(duration_ms)} ms"
         end_width = draw.textbbox((0, 0), end_label, font=font)[2]
         draw.text(
             (x + width - end_width, height + 84), end_label, font=font, fill="#a5b6cc"
@@ -114,8 +126,9 @@ def render_rate_poisson_hero(
         draw.text(
             (x + width // 2 - 24, height + 84), "time ->", font=font, fill="#a5b6cc"
         )
+        dt_text = _format_number(meta["dt_seconds"])
         lines = (
-            f"seed={meta['seed']}  dt_seconds={meta['dt_seconds']:g}  N={meta['n_neurons']}  T={meta['n_steps']}",
+            f"seed={meta['seed']}  dt_seconds={dt_text}  N={meta['n_neurons']}  T={meta['n_steps']}",
             "axon-encoder commit:",
             meta["axon_encoder_git_sha"],
         )
