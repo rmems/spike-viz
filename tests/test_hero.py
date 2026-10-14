@@ -1,20 +1,21 @@
-"""Rate vs Poisson hero: fair axes, honest provenance, no invented data."""
+"""Hero stills: shared-scale Rate vs Poisson, and real rate-gain comparisons."""
 
 from __future__ import annotations
 
 import json
 import shutil
+from copy import deepcopy
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
 import pytest
-from PIL import Image
+from PIL import Image, ImageFont
 
 import spike_viz
 from spike_viz import hero
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures" / "axon-encoder"
-
 
 def test_hero_saves_shared_scale_rasters_and_provenance(tmp_path: Path) -> None:
     # Independent panel scaling, transposition, or swapped panels would change
@@ -211,3 +212,260 @@ def test_hero_rate_mode_must_be_explicit_and_valid() -> None:
         spike_viz.render_rate_poisson_hero(*args, rate_mode="unknown")
     image = spike_viz.render_rate_poisson_hero(*args, rate_mode="batch")
     assert "RateEncoder (stochastic batch)" in image.info["Description"]
+
+
+ROOT = Path(__file__).resolve().parents[1] / "fixtures" / "axon-encoder" / "rate"
+
+
+@pytest.fixture
+def gain_cases():
+    return tuple(
+        spike_viz.load_axon_export(ROOT / f"shared_sine_gain_{gain}_v1")
+        for gain in (0, 1, 2)
+    )
+
+
+def test_gain_triptych_preserves_exported_occupancy_and_png_provenance(
+    gain_cases, tmp_path
+):
+    out = tmp_path / "triptych.png"
+    image = spike_viz.render_gain_triptych(*gain_cases, out_path=out, scale=1)
+    with Image.open(out) as saved:
+        np.testing.assert_array_equal(np.asarray(saved), np.asarray(image))
+        caption = saved.info["Description"]
+    for text in (
+        "Silence",
+        "Normal",
+        "Elevated",
+        "firing_rate_scale=0",
+        "firing_rate_scale=1",
+        "firing_rate_scale=2",
+        "modulators: none",
+        "encoder=rate",
+        "dt=0.001 s",
+        "seed=1592590337",
+        "N=8",
+        "T=64",
+        gain_cases[0].meta["axon_encoder_git_sha"],
+    ):
+        assert text in caption
+
+    # Cyan is reserved for event bins, never used for labels or decoration.
+    # Compare every exported position, not just aggregate counts: lost events,
+    # jitter, transposition, and fabricated residual silence must all fail.
+    pixels = np.asarray(image)
+    cyan = np.all(pixels == [0, 230, 255], axis=2)
+    for case, panel in zip(gain_cases, np.array_split(cyan, 3, axis=1)):
+        expected = np.zeros((8, 64), dtype=bool)
+        expected[case.events.neuron_id, case.events.t] = True
+        assert panel.sum() == expected.sum() * 9  # Each bin is 3 x 3.
+        if expected.any():
+            # Identify the raster origin from its first occupied bin. This
+            # leaves text spacing free to change without changing the test.
+            first_row, first_col = np.argwhere(expected)[0]
+            y, x = np.argwhere(panel)[0] - [first_row * 3, first_col * 3]
+            actual = panel[y : y + 24, x : x + 192]
+            np.testing.assert_array_equal(
+                actual, np.repeat(np.repeat(expected, 3, axis=0), 3, axis=1)
+            )
+
+
+@pytest.mark.parametrize(
+    "key,value",
+    [
+        ("seed", 7),
+        ("encoder_config", {"base_rate_hz": 75.0}),
+        ("axon_encoder_git_sha", "a" * 40),
+        ("synthetic", True),
+        ("exporter_patch_sha256", "0" * 64),
+        ("encoding_gains", {"firing_rate_scale": 1.0}),
+    ],
+)
+def test_gain_triptych_rejects_invalid_comparisons(gain_cases, key, value):
+    cases = list(gain_cases)
+    meta = deepcopy(cases[2].meta)
+    meta[key] = value
+    cases[2] = replace(cases[2], meta=meta)
+    with pytest.raises(ValueError):
+        spike_viz.render_gain_triptych(*cases)
+
+
+def test_gain_triptych_rejects_different_stimulus(gain_cases, tmp_path):
+    stimulus = np.load(gain_cases[2].stimulus_path, allow_pickle=False)
+    stimulus[0, 1] += 0.01
+    path = tmp_path / "different.npy"
+    np.save(path, stimulus)
+    elevated = replace(gain_cases[2], stimulus_path=path)
+    with pytest.raises(ValueError, match="stimulus"):
+        spike_viz.render_gain_triptych(*gain_cases[:2], elevated)
+
+
+def test_gain_triptych_rejects_nonempty_silence_and_wrong_order(gain_cases):
+    silence = replace(gain_cases[0], events=gain_cases[1].events)
+    with pytest.raises(ValueError, match="silence"):
+        spike_viz.render_gain_triptych(silence, *gain_cases[1:])
+    with pytest.raises(ValueError, match="gain"):
+        spike_viz.render_gain_triptych(*reversed(gain_cases))
+
+
+def test_gain_triptych_captions_exported_modulator_summary(gain_cases):
+    cases = []
+    for case in gain_cases:
+        meta = deepcopy(case.meta)
+        meta["modulators"] = {"dopamine": 0.25, "serotonin": 0.75}
+        cases.append(replace(case, meta=meta))
+    image = spike_viz.render_gain_triptych(*cases)
+    assert (
+        'modulators: {"dopamine": 0.25, "serotonin": 0.75}' in image.info["Description"]
+    )
+
+
+@pytest.mark.parametrize(
+    "key",
+    ["threshold_scale", "sensitivity_scale", "latency_scale"],
+)
+def test_gain_triptych_rejects_boolean_identity_gains(gain_cases, key):
+    meta = deepcopy(gain_cases[2].meta)
+    meta["encoding_gains"] = dict(meta["encoding_gains"])
+    meta["encoding_gains"][key] = True
+    elevated = replace(gain_cases[2], meta=meta)
+    with pytest.raises(ValueError, match="identity non-rate"):
+        spike_viz.render_gain_triptych(*gain_cases[:2], elevated)
+
+
+def test_gain_triptych_rejects_overflowing_firing_rate_gain(gain_cases):
+    meta = deepcopy(gain_cases[1].meta)
+    meta["encoding_gains"] = dict(meta["encoding_gains"])
+    meta["encoding_gains"]["firing_rate_scale"] = 10**1000
+    normal = replace(gain_cases[1], meta=meta)
+    with pytest.raises(ValueError, match="finite"):
+        spike_viz.render_gain_triptych(gain_cases[0], normal, gain_cases[2])
+
+
+def test_gain_triptych_rejects_differing_modulators(gain_cases):
+    cases = []
+    for index, case in enumerate(gain_cases):
+        meta = deepcopy(case.meta)
+        meta["modulators"] = {"dopamine": 0.25 if index < 2 else 0.75}
+        cases.append(replace(case, meta=meta))
+    with pytest.raises(ValueError, match="identical modulators"):
+        spike_viz.render_gain_triptych(*cases)
+
+
+@pytest.mark.parametrize("digest", [None, "not-a-digest", "A" * 64, "0" * 63])
+def test_gain_triptych_rejects_unpinned_exporter_patch(gain_cases, digest):
+    cases = []
+    for case in gain_cases:
+        meta = deepcopy(case.meta)
+        if digest is None:
+            del meta["exporter_patch_sha256"]
+        else:
+            meta["exporter_patch_sha256"] = digest
+        cases.append(replace(case, meta=meta))
+    with pytest.raises(ValueError, match="SHA-256"):
+        spike_viz.render_gain_triptych(*cases)
+
+
+def test_gain_triptych_wraps_wide_modulator_captions(gain_cases):
+    wide = "W" * 80
+    cases = []
+    for case in gain_cases:
+        meta = deepcopy(case.meta)
+        meta["modulators"] = {wide: 1}
+        cases.append(replace(case, meta=meta))
+    image = spike_viz.render_gain_triptych(*cases, scale=1)
+    plain = spike_viz.render_gain_triptych(*gain_cases, scale=1)
+    assert image.size[0] == plain.size[0]
+    assert ImageFont.load_default().getlength(wide) > image.size[0] / 3
+    pixels = np.asarray(image)
+    margin = pixels[0, -1]
+    assert np.all(pixels[:, -16:] == margin)
+    assert wide in image.info["Description"]
+
+
+def test_gain_triptych_accepts_numpy_integer_scale(gain_cases):
+    base = spike_viz.render_gain_triptych(*gain_cases, scale=1)
+    scaled = spike_viz.render_gain_triptych(*gain_cases, scale=np.int64(2))
+    assert scaled.size == (base.size[0] * 2, base.size[1] * 2)
+
+
+def _with_gains(case, **scales):
+    meta = deepcopy(case.meta)
+    meta["encoding_gains"] = dict(meta["encoding_gains"])
+    meta["encoding_gains"].update(scales)
+    return replace(case, meta=meta)
+
+
+def test_gain_triptych_accepts_numpy_real_gains(gain_cases):
+    # Builtin isinstance(int/float) misses these: float64 subclasses float,
+    # but float32 and the integer scalars do not.
+    identity = {
+        "threshold_scale": np.float64(1.0),
+        "sensitivity_scale": np.int64(1),
+        "latency_scale": np.float32(1.0),
+    }
+    cases = (
+        _with_gains(gain_cases[0], firing_rate_scale=np.int64(0), **identity),
+        _with_gains(gain_cases[1], firing_rate_scale=np.float32(1.0), **identity),
+        _with_gains(gain_cases[2], firing_rate_scale=np.float64(2.0), **identity),
+    )
+    image = spike_viz.render_gain_triptych(*cases)
+    caption = image.info["Description"]
+    assert "firing_rate_scale=0" in caption
+    assert "firing_rate_scale=1" in caption
+    assert "firing_rate_scale=2" in caption
+
+
+@pytest.mark.parametrize(
+    "scales, message",
+    [
+        ({"firing_rate_scale": np.float64(-1.0)}, "finite"),
+        ({"firing_rate_scale": np.float32(np.nan)}, "finite"),
+        ({"firing_rate_scale": np.bool_(True)}, "finite"),
+        ({"threshold_scale": np.int64(2)}, "identity non-rate"),
+        ({"threshold_scale": np.float64(1.5)}, "identity non-rate"),
+        ({"sensitivity_scale": np.bool_(True)}, "identity non-rate"),
+    ],
+)
+def test_gain_triptych_rejects_non_identity_numpy_gains(gain_cases, scales, message):
+    elevated = _with_gains(gain_cases[2], **scales)
+    with pytest.raises(ValueError, match=message):
+        spike_viz.render_gain_triptych(*gain_cases[:2], elevated)
+
+
+@pytest.mark.parametrize(
+    "rate",
+    [np.int64(2**53 + 1), np.uint64(2**64 - 1)],
+)
+def test_gain_triptych_rejects_numpy_integers_that_collapse(gain_cases, rate):
+    # NumPy integer == float narrows the integer, so these compare equal to the
+    # rounded float and would be captioned as a different gain.
+    assert int(rate) != float(rate)
+    assert rate == float(rate)
+    elevated = _with_gains(gain_cases[2], firing_rate_scale=rate)
+    with pytest.raises(ValueError, match="finite"):
+        spike_viz.render_gain_triptych(*gain_cases[:2], elevated)
+
+
+def test_gain_triptych_rejects_gains_that_collapse_to_float(gain_cases):
+    # 2**53 + 1 narrows to 2**53, which would still pass the elevated check.
+    collapsed = _with_gains(gain_cases[2], firing_rate_scale=2**53 + 1)
+    with pytest.raises(ValueError, match="finite"):
+        spike_viz.render_gain_triptych(*gain_cases[:2], collapsed)
+
+    exact = _with_gains(gain_cases[2], firing_rate_scale=np.longdouble(2))
+    image = spike_viz.render_gain_triptych(*gain_cases[:2], exact)
+    assert "firing_rate_scale=2" in image.info["Description"]
+
+    if np.finfo(np.longdouble).eps >= np.finfo(float).eps:
+        return
+    near_one = np.longdouble(1) + np.finfo(np.longdouble).eps
+    assert float(near_one) == 1.0 and near_one != 1.0
+    normal = _with_gains(gain_cases[1], firing_rate_scale=near_one)
+    with pytest.raises(ValueError, match="finite"):
+        spike_viz.render_gain_triptych(gain_cases[0], normal, gain_cases[2])
+    tiny = np.longdouble("1e-400")
+    assert float(tiny) == 0.0 and tiny != 0.0
+    silence = _with_gains(gain_cases[0], firing_rate_scale=tiny)
+    with pytest.raises(ValueError, match="finite"):
+        spike_viz.render_gain_triptych(silence, *gain_cases[1:])
