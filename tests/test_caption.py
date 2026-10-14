@@ -8,6 +8,11 @@ import pytest
 import spike_viz
 from spike_viz import SpikeIOError
 
+REPO = Path(__file__).resolve().parents[1]
+RATE_FIXTURE_META = (
+    REPO / "fixtures" / "axon-encoder" / "rate" / "shared_sine_v1" / "meta.json"
+)
+
 
 @pytest.fixture
 def meta_path(tmp_path: Path) -> Path:
@@ -116,9 +121,7 @@ def test_caption_missing_parent_raises_before_metadata(tmp_path: Path) -> None:
 
 
 def test_caption_pinned_rate_fixture() -> None:
-    assert spike_viz.provenance_caption(
-        "fixtures/axon-encoder/rate/shared_sine_v1/meta.json"
-    ) == (
+    assert spike_viz.provenance_caption(RATE_FIXTURE_META) == (
         'encoder="rate" | dt_seconds=0.001 | seed=1592590337 | N=8 | T=64 | '
         'axon_encoder_git_sha="908a34797c8aaff0a57e0ea4167aa00f3780c940"'
     )
