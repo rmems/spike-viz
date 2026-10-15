@@ -35,6 +35,15 @@ normalized through a `TimeCursor` advanced once per encoder call. See
 
 Helpers: `sparse_to_dense(events, n_steps, n_neurons)` → `[T, N]` float32.
 
+## Preferred directions
+
+For directional populations, optional `meta.json` field
+`preferred_angles_radians` stores one finite angle per neuron, indexed by
+`neuron_id`: radians, zero east, positive counterclockwise. Only source-supplied
+directions are valid; scalar tuning centers are not angles. See the
+[export contract](axon-encoder-export.md#preferred-direction-geometry-optional-renderer-extension)
+for validation and the current PopulationEncoder fixture gap.
+
 ## On-disk sparse
 
 **`.npz`** with arrays:

@@ -6,6 +6,7 @@ __version__ = "0.1.0a0"
 
 from spike_viz.bloom import bloom_raster
 from spike_viz.caption import provenance_caption
+from spike_viz.direction_ring import render_direction_ring
 from spike_viz.events import SpikeEvents
 from spike_viz.export import AxonExportCase, load_axon_export
 from spike_viz.gain_triptych import render_gain_triptych
@@ -22,6 +23,7 @@ __all__ = [
     "load_dense",
     "load_sparse",
     "provenance_caption",
+    "render_direction_ring",
     "render_gain_triptych",
     "render_rate_poisson_hero",
     "render_raster",

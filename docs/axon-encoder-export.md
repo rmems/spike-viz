@@ -189,8 +189,42 @@ encoder="rate" | dt_seconds=0.001 | seed=1592590337 | N=8 | T=64 | axon_encoder_
 
 The Rate vs Poisson still and the gain triptych already paint their own visible
 provenance on the PNG. This helper is the plain-text sidecar for one export's
-`meta.json`. It does not add a footer or alter raster, bloom, hero, or triptych
-pixels. A comparison that uses it must retain provenance for **both** inputs.
+`meta.json`. It does not add a footer or alter raster, bloom, hero, triptych,
+or direction-ring pixels. A comparison that uses it must retain provenance for
+**both** inputs.
+
+## Preferred-direction geometry (optional renderer extension)
+
+Direction exports may add `preferred_angles_radians` to `meta.json`: a JSON
+array of exactly `n_neurons` finite numbers, in radians, indexed by exported
+`neuron_id`. Zero points east; positive angles run counterclockwise. Angles
+outside `[0, 2π)` are equivalent modulo a turn. The loader preserves this
+optional field; `render_direction_ring` validates it when rendering. Missing
+or invalid angles raise `ValueError`; no evenly spaced fallback is provided.
+
+These must be **actual preferred directions supplied by the source**, not
+angles inferred from channel order or linear scalar tuning centers. This is
+an additive metadata extension to schema `1.0`, not a change to spike arrays.
+
+**Current fixture gap for #17:** `population/shared_sine_v1` is a real,
+provenance-pinned PopulationEncoder export, but **not a direction export**.
+Its recorded commit is `908a34797c8aaff0a57e0ea4167aa00f3780c940`. At that
+commit, axon-encoder
+[`src/encoders/population.rs`](https://github.com/Limen-Neural/axon-encoder/blob/908a34797c8aaff0a57e0ea4167aa00f3780c940/src/encoders/population.rs)
+defines Gaussian tuning on a linear scalar interval (`preferred_value` from
+`input_range`, absolute distance, no angle). The checked-in `encoder_config`
+is `num_neurons: 4`, `input_range: [0, 1]`, `tuning_width: 0.15`, and
+`meta.json` has no `preferred_angles_radians`. Spike channel is
+`input_channel * 4 + neuron_index` (eight inputs, 32 neurons). Mapping those
+scalar centers onto a circle would invent direction semantics, so this
+renderer intentionally rejects that fixture. Its spikes and metadata remain
+unchanged.
+
+To finish #17, the truth owner must supply genuine directional geometry and
+a provenance-pinned export carrying the angles, then spike-viz can check in
+the fixture, add a real-fixture rendering test, and produce the hero PNG.
+The renderer is available in advance; the acceptance criterion for a real
+preferred-direction fixture remains unmet.
 
 ## Golden fixtures policy
 
