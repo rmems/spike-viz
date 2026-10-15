@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import math
 import textwrap
 from pathlib import Path
@@ -20,6 +21,8 @@ _ANGLES_ERROR = (
 _FINITE_ERROR = "preferred_angles_radians must contain finite numbers"
 _WINDOW_ERROR = "window must be integer steps (start, stop) with 0 <= start < stop <= T"
 _RADIUS_ERROR = "radius must be an integer >= 32 pixels"
+_NEURON_ID_ERROR = "event neuron_id must be within [0, n_neurons)"
+_COINCIDENT_SPACING = 24
 _INK = (227, 236, 250)
 _MUTED = (146, 162, 185)
 _BACKGROUND = (8, 12, 23)
@@ -91,6 +94,13 @@ def _is_real_number(value: object) -> bool:
     return not isinstance(value, bool) and isinstance(value, (int, float))
 
 
+def _is_integer(value: object) -> bool:
+    """Python or NumPy integers. Booleans compare equal to 0 and 1, so they are not integers here."""
+    if isinstance(value, (bool, np.bool_)):
+        return False
+    return isinstance(value, (int, np.integer))
+
+
 def _preferred_angles(raw: object, n_neurons: int) -> np.ndarray:
     if (
         not isinstance(raw, list)
@@ -113,36 +123,49 @@ def _step_window(window: tuple[int, int] | None, n_steps: int) -> tuple[int, int
     if (
         not isinstance(window, tuple)
         or len(window) != 2
-        or any(isinstance(value, bool) or not isinstance(value, int) for value in window)
+        or any(not _is_integer(value) for value in window)
         or not 0 <= window[0] < window[1] <= n_steps
     ):
         raise ValueError(_WINDOW_ERROR)
-    return window
+    return int(window[0]), int(window[1])
 
 
-def _require_radius(radius: int) -> int:
-    if isinstance(radius, bool) or not isinstance(radius, int) or radius < 32:
+def _require_radius(radius: object) -> int:
+    if not _is_integer(radius) or radius < 32:
         raise ValueError(_RADIUS_ERROR)
-    return radius
+    return int(radius)
 
 
 def _window_strength(
     events: SpikeEvents, start: int, stop: int, n_neurons: int
 ) -> tuple[np.ndarray, int, np.ndarray]:
+    ids = events.neuron_id
+    if ids.size and (int(ids.min()) < 0 or int(ids.max()) >= n_neurons):
+        raise ValueError(_NEURON_ID_ERROR)
     selected = (events.t >= start) & (events.t < stop)
-    counts = np.bincount(events.neuron_id[selected], minlength=n_neurons)
+    counts = np.bincount(ids[selected], minlength=n_neurons)
     peak = int(counts.max())
     strength = counts / peak if peak else np.zeros(n_neurons)
     return counts, peak, strength
 
 
+def _provenance_text(value: object) -> str:
+    """JSON-quote strings so lone surrogates survive PNG text encoding."""
+    if isinstance(value, str):
+        return json.dumps(value)
+    return str(value)
+
+
 def _provenance(meta: dict, n_neurons: int, n_steps: int, frame: _Frame) -> str:
-    commit = meta.get("axon_encoder_git_sha") or "unknown"
+    raw_commit = meta.get("axon_encoder_git_sha")
+    commit = _provenance_text(raw_commit) if raw_commit else "unknown"
+    synthetic = meta.get("synthetic", "unknown")
+    synthetic_text = _provenance_text(synthetic) if isinstance(synthetic, str) else synthetic
     return (
-        f"encoder={meta['encoder']} | dt={meta['dt_seconds']:g} s/step | seed={meta['seed']} | "
-        f"N={n_neurons} | T={n_steps}\n"
+        f"encoder={_provenance_text(meta['encoder'])} | dt={meta['dt_seconds']} s/step | "
+        f"seed={meta['seed']} | N={n_neurons} | T={n_steps}\n"
         f"axon-encoder commit={commit}\n"
-        f"synthetic={meta.get('synthetic', 'unknown')} | steps [{frame.start}, {frame.stop}) | "
+        f"synthetic={synthetic_text} | steps [{frame.start}, {frame.stop}) | "
         f"source_events={frame.event_count}"
     )
 
@@ -183,7 +206,7 @@ def _paint_ring(
         width=2,
     )
     _draw_compass(draw, canvas)
-    positions = _positions(canvas, angles)
+    positions = _spread_coincident(_positions(canvas, angles), strength, angles)
     if glow:
         image = _with_glow(image, positions, strength)
         draw = ImageDraw.Draw(image)
@@ -238,6 +261,39 @@ def _with_glow(
     return ImageChops.add(image, halo.filter(ImageFilter.GaussianBlur(10)))
 
 
+def _spread_coincident(
+    positions: list[tuple[float, float]],
+    strength: np.ndarray,
+    angles: np.ndarray,
+) -> list[tuple[float, float]]:
+    """Offset neurons that share a pixel so a later, weaker dot cannot cover a stronger one.
+
+    The strongest neuron in a coincident group stays on the exported angle. Weaker
+    neurons move along the tangent, alternating sides, far enough that marker disks
+    do not cover each other. Unique angles are unchanged.
+    """
+    groups: dict[tuple[int, int], list[int]] = {}
+    for neuron, (x, y) in enumerate(positions):
+        groups.setdefault((round(x), round(y)), []).append(neuron)
+    placed = list(positions)
+    for members in groups.values():
+        if len(members) < 2:
+            continue
+        ordered = sorted(members, key=lambda neuron: (float(strength[neuron]), neuron))
+        angle = float(angles[ordered[-1]])
+        tangent_x = -math.sin(angle)
+        tangent_y = -math.cos(angle)
+        for index, neuron in enumerate(ordered[:-1]):
+            step = (index // 2 + 1) * _COINCIDENT_SPACING
+            sign = -1 if index % 2 else 1
+            x, y = positions[neuron]
+            placed[neuron] = (
+                x + sign * step * tangent_x,
+                y + sign * step * tangent_y,
+            )
+    return placed
+
+
 def _draw_markers(
     draw: ImageDraw.ImageDraw,
     positions: list[tuple[float, float]],
@@ -245,14 +301,16 @@ def _draw_markers(
     angles: np.ndarray,
     canvas: _Canvas,
 ) -> None:
-    # Inactive markers first so they cannot hide activity at coincident angles.
+    # Inactive first, then weaker activity before stronger, so a later disk cannot hide a higher count.
     n_neurons = len(angles)
-    for active in (False, True):
-        for neuron, ((x, y), scale) in enumerate(zip(positions, strength)):
-            if bool(scale > 0) != active:
-                continue
-            marker = (x, y, float(scale), float(angles[neuron]), neuron)
-            _draw_neuron(draw, marker, canvas, n_neurons)
+    order = sorted(
+        range(n_neurons),
+        key=lambda neuron: (float(strength[neuron]) > 0, float(strength[neuron]), neuron),
+    )
+    for neuron in order:
+        x, y = positions[neuron]
+        marker = (x, y, float(strength[neuron]), float(angles[neuron]), neuron)
+        _draw_neuron(draw, marker, canvas, n_neurons)
 
 
 def _draw_neuron(
@@ -266,8 +324,10 @@ def _draw_neuron(
     color = (int(40 + 160 * scale), int(55 + 185 * scale), int(75 + 180 * scale))
     draw.ellipse((x - dot, y - dot, x + dot, y + dot), fill=color)
     if n_neurons <= 32:
-        label_x = canvas.cx + (canvas.radius - 24) * math.cos(angle)
-        label_y = canvas.cy - (canvas.radius - 24) * math.sin(angle)
+        true_x = canvas.cx + canvas.radius * math.cos(angle)
+        true_y = canvas.cy - canvas.radius * math.sin(angle)
+        label_x = canvas.cx + (canvas.radius - 24) * math.cos(angle) + (x - true_x)
+        label_y = canvas.cy - (canvas.radius - 24) * math.sin(angle) + (y - true_y)
         draw.text((label_x, label_y), f"n{neuron}", anchor="mm", font=canvas.font, fill=_MUTED)
 
 

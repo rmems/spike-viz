@@ -1,5 +1,6 @@
 """Public contract for explicit preferred-direction geometry and spike truth."""
 
+import json
 from dataclasses import replace
 from pathlib import Path
 
@@ -105,13 +106,73 @@ def test_direction_ring_rejects_invalid_geometry(angles):
         spike_viz.render_direction_ring(case)
 
 
-@pytest.mark.parametrize("window", [(-1, 2), (1, 1), (0, 5), (0.5, 2), (True, 2)])
+@pytest.mark.parametrize(
+    "window",
+    [(-1, 2), (1, 1), (0, 5), (0.5, 2), (True, 2), (np.float64(1), 2), (np.bool_(True), 2)],
+)
 def test_direction_ring_rejects_invalid_window(window):
     with pytest.raises(ValueError, match="window"):
         spike_viz.render_direction_ring(direction_case(), window=window)
 
 
-@pytest.mark.parametrize("radius", [0, 31, 1.5, True])
+@pytest.mark.parametrize(
+    "radius", [0, 31, 1.5, True, np.float64(100), np.bool_(True), np.int64(31)]
+)
 def test_direction_ring_rejects_invalid_radius(radius):
     with pytest.raises(ValueError, match="radius"):
         spike_viz.render_direction_ring(direction_case(), radius=radius)
+
+
+def test_direction_ring_accepts_numpy_integer_window_and_radius():
+    case = direction_case()
+    image = spike_viz.render_direction_ring(
+        case, window=(np.int64(1), np.int64(2)), radius=np.int64(100), glow=False
+    )
+    expected = spike_viz.render_direction_ring(case, window=(1, 2), radius=100, glow=False)
+    np.testing.assert_array_equal(np.asarray(image), np.asarray(expected))
+
+
+@pytest.mark.parametrize("neuron_id", [[4], [-1], [0, 4]])
+def test_direction_ring_rejects_neuron_ids_outside_population(neuron_id):
+    case = replace(
+        direction_case(),
+        events=SpikeEvents(
+            t=[0] * len(neuron_id), neuron_id=neuron_id, amp=[1] * len(neuron_id)
+        ),
+    )
+    # Default window is the last step, so these ids are outside the painted window
+    # and must still be rejected before counting.
+    with pytest.raises(ValueError, match=r"neuron_id must be within \[0, n_neurons\)"):
+        spike_viz.render_direction_ring(case, radius=64, glow=False)
+
+
+def test_coincident_angles_keep_each_neuron_and_the_stronger_count():
+    case = replace(
+        direction_case(),
+        events=SpikeEvents(t=[0] * 11, neuron_id=[0] * 10 + [1], amp=[1] * 11),
+    )
+    case.meta["n_neurons"] = 2
+    case.meta["preferred_angles_radians"] = [0.0, 0.0]
+    image = spike_viz.render_direction_ring(case, window=(0, 1), radius=100, glow=False)
+    pixels = np.asarray(image)
+    cx, cy = image.width // 2, image.width // 2 + 40
+    stronger = pixels[cy, cx + 100]
+    weaker = pixels[cy - 24, cx + 100]
+    assert stronger.max() > 200
+    assert 40 < weaker.max() < stronger.max()
+    assert "source_events=11" in image.info["provenance"]
+
+
+def test_provenance_prints_source_dt_and_escapes_surrogate_strings(tmp_path):
+    case = direction_case()
+    case.meta["dt_seconds"] = 0.001000001
+    case.meta["encoder"] = "rate\ud800"
+    case.meta["axon_encoder_git_sha"] = "abc\ud800"
+    path = tmp_path / "ring.png"
+    image = spike_viz.render_direction_ring(case, radius=64, glow=False, out_path=path)
+    caption = image.info["provenance"]
+    assert "dt=0.001000001 s/step" in caption
+    assert json.dumps("rate\ud800") in caption
+    assert json.dumps("abc\ud800") in caption
+    with Image.open(path) as saved:
+        assert saved.info["provenance"] == caption
