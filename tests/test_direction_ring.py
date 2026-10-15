@@ -195,6 +195,18 @@ def test_thirty_two_coincident_neurons_stay_in_the_plot_at_minimum_radius():
     assert f"source_events={sum(counts)}" in image.info["provenance"]
 
 
+def test_direction_ring_rejects_plot_larger_than_4096_pixels():
+    n = 1024
+    case = replace(
+        direction_case(),
+        events=SpikeEvents(t=[0], neuron_id=[0], amp=[1]),
+    )
+    case.meta["n_neurons"] = n
+    case.meta["preferred_angles_radians"] = [0.0] * n
+    with pytest.raises(ValueError, match="4096"):
+        spike_viz.render_direction_ring(case, radius=32, glow=False)
+
+
 def test_provenance_prints_source_dt_and_escapes_surrogate_strings(tmp_path):
     case = direction_case()
     case.meta["dt_seconds"] = 0.001000001

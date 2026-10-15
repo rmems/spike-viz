@@ -24,6 +24,8 @@ _RADIUS_ERROR = "radius must be an integer >= 32 pixels"
 _NEURON_ID_ERROR = "event neuron_id must be within [0, n_neurons)"
 _COINCIDENT_SPACING = 24
 _PLOT_MARGIN = 80
+_MAX_PLOT_PX = 4096
+_PLOT_SIZE_ERROR = "direction ring plot width or height would exceed 4096 pixels"
 _INK = (227, 236, 250)
 _MUTED = (146, 162, 185)
 _BACKGROUND = (8, 12, 23)
@@ -179,21 +181,23 @@ def _paint_ring(
     frame: _Frame,
 ) -> Image.Image:
     width = _plot_width(frame.radius, angles)
+    if width > _MAX_PLOT_PX:
+        raise ValueError(_PLOT_SIZE_ERROR)
+    footer_y = width + 20
+    caption = "\n".join(
+        textwrap.fill(line, width=(width - 48) // 8) for line in provenance.splitlines()
+    )
+    height = footer_y + 26 + len(caption.splitlines()) * 20
+    if height > _MAX_PLOT_PX:
+        raise ValueError(_PLOT_SIZE_ERROR)
     canvas = _Canvas(
         width // 2,
         width // 2 + 40,
         frame.radius,
-        width + 20,
+        footer_y,
         ImageFont.load_default(size=14),
     )
-    caption = "\n".join(
-        textwrap.fill(line, width=(width - 48) // 8) for line in provenance.splitlines()
-    )
-    image = Image.new(
-        "RGB",
-        (width, canvas.footer_y + 26 + len(caption.splitlines()) * 20),
-        _BACKGROUND,
-    )
+    image = Image.new("RGB", (width, height), _BACKGROUND)
     draw = ImageDraw.Draw(image)
     _draw_header(draw, canvas.font, frame)
     draw.ellipse(
