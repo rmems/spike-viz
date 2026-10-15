@@ -163,6 +163,38 @@ def test_coincident_angles_keep_each_neuron_and_the_stronger_count():
     assert "source_events=11" in image.info["provenance"]
 
 
+def test_thirty_two_coincident_neurons_stay_in_the_plot_at_minimum_radius():
+    n = 32
+    radius = 32
+    counts = [n - neuron for neuron in range(n)]
+    neuron_id = [neuron for neuron, count in enumerate(counts) for _ in range(count)]
+    case = replace(
+        direction_case(),
+        events=SpikeEvents(
+            t=[0] * len(neuron_id), neuron_id=neuron_id, amp=[1] * len(neuron_id)
+        ),
+    )
+    case.meta["n_neurons"] = n
+    case.meta["preferred_angles_radians"] = [0.0] * n
+    image = spike_viz.render_direction_ring(case, window=(0, 1), radius=radius, glow=False)
+    pixels = np.asarray(image)
+    height, width = pixels.shape[:2]
+    cx, cy = width // 2, width // 2 + 40
+    caption_top = width + 20 - 28
+    assert pixels[cy, cx + radius].max() > 200
+    # Weaker neurons alternate along the tangent at 24px, strongest held on the ring.
+    for index in range(n - 1):
+        step = (index // 2 + 1) * 24
+        sign = -1 if index % 2 else 1
+        y = cy - sign * step
+        x = cx + radius
+        assert 80 <= y < caption_top - 10
+        assert 0 <= x < width
+        assert y < height
+        assert pixels[y, x].max() > 40
+    assert f"source_events={sum(counts)}" in image.info["provenance"]
+
+
 def test_provenance_prints_source_dt_and_escapes_surrogate_strings(tmp_path):
     case = direction_case()
     case.meta["dt_seconds"] = 0.001000001

@@ -23,6 +23,7 @@ _WINDOW_ERROR = "window must be integer steps (start, stop) with 0 <= start < st
 _RADIUS_ERROR = "radius must be an integer >= 32 pixels"
 _NEURON_ID_ERROR = "event neuron_id must be within [0, n_neurons)"
 _COINCIDENT_SPACING = 24
+_PLOT_MARGIN = 80
 _INK = (227, 236, 250)
 _MUTED = (146, 162, 185)
 _BACKGROUND = (8, 12, 23)
@@ -177,7 +178,7 @@ def _paint_ring(
     provenance: str,
     frame: _Frame,
 ) -> Image.Image:
-    width = max(640, 2 * frame.radius + 160)
+    width = _plot_width(frame.radius, angles)
     canvas = _Canvas(
         width // 2,
         width // 2 + 40,
@@ -261,6 +262,18 @@ def _with_glow(
     return ImageChops.add(image, halo.filter(ImageFilter.GaussianBlur(10)))
 
 
+def _plot_width(radius: int, angles: np.ndarray) -> int:
+    """Size the ring plot so a tangent stack stays on the canvas and above the caption.
+
+    The historical margin is 80 pixels around the farthest marker center. That keeps
+    marker disks and labels in the plot band; the caption is drawn below ``width + 20``.
+    """
+    preview = _Canvas(0, 0, radius, 0, ImageFont.load_default(size=14))
+    placed = _spread_coincident(_positions(preview, angles), np.ones(len(angles)), angles)
+    farthest = max(math.hypot(x, y) for x, y in placed)
+    return max(640, 2 * (math.ceil(farthest) + _PLOT_MARGIN))
+
+
 def _spread_coincident(
     positions: list[tuple[float, float]],
     strength: np.ndarray,
@@ -270,7 +283,8 @@ def _spread_coincident(
 
     The strongest neuron in a coincident group stays on the exported angle. Weaker
     neurons move along the tangent, alternating sides, far enough that marker disks
-    do not cover each other. Unique angles are unchanged.
+    do not cover each other. The plot is enlarged so those disks stay inside the
+    ring area and above the caption. Unique angles are unchanged.
     """
     groups: dict[tuple[int, int], list[int]] = {}
     for neuron, (x, y) in enumerate(positions):
