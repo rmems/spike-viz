@@ -36,8 +36,6 @@ Before claiming done, follow the gate in `REVIEW.md`.
 
 ## Invariants and non-goals (from `AGENTS.md`, `docs/CHARTER.md`, `README.md`)
 
-- Paint only: no encoder, no pyo3 bindings, no synthetic fallback when loading fails. A missing fixture must raise `SpikeIOError`.
-- CPU must always work; CUDA is optional and its tests must skip, never fail, without a GPU.
 - Preferred-direction rings need explicit `meta["preferred_angles_radians"]`; angles are never inferred. Issue #17 stays fixture-blocked (see README).
 - Do not weaken tests to hide load errors; those failures are product bugs.
 
