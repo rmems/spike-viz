@@ -32,6 +32,7 @@ pytest -q
 | [docs/CHARTER.md](docs/CHARTER.md) | Purpose, truth/paint split, non-goals |
 | [docs/schema.md](docs/schema.md) | Sparse/dense spike schema |
 | [docs/axon-encoder-export.md](docs/axon-encoder-export.md) | Export layout + golden fixtures |
+| [docs/encoder-gallery.md](docs/encoder-gallery.md) | Seven-encoder gallery on one shared stimulus (Phase pending) |
 | [docs/gain-triptych.md](docs/gain-triptych.md) | Real rate gain fixtures → captioned silence / normal / elevated PNG |
 | [AGENTS.md](AGENTS.md) | Rules for coding agents |
 | [REVIEW.md](REVIEW.md) | Local quality gate before merge |
@@ -76,6 +77,16 @@ use different rate mappings, so this is not a parameter-matched experiment.
 See [the hero guide](docs/rate-vs-poisson-hero.md) for the rendering command,
 exact axon-encoder source, and fixture regeneration instructions. No Python
 re-encoding, synthetic fallback, or GPU required.
+
+## Encoder gallery
+
+![Seven-slot axon-encoder gallery](docs/images/encoder-gallery.png)
+
+`render_encoder_gallery` stacks Rate, Poisson, Latency, Population, Temporal,
+Predictive and Phase rasters on one shared stimulus-sample axis, each panel with
+a visible mode and provenance caption. The Phase slot is explicitly **pending**:
+no PhaseEncoder export exists yet, and nothing is painted for it. See
+[the gallery guide](docs/encoder-gallery.md).
 
 ## Rate gain triptych
 
