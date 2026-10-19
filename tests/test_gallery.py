@@ -79,15 +79,16 @@ def test_gallery_paints_every_exported_bin_and_provenance(tmp_path: Path) -> Non
         expected[case.events.neuron_id, case.events.t] = True
         np.testing.assert_array_equal(np.any(bins > 0, axis=2), expected)
         negative = np.zeros((n, t), dtype=bool)
-        neg = case.events.amp < 0
-        negative[case.events.neuron_id[neg], case.events.t[neg]] = True
+        if case.events.amp is not None:
+            neg = case.events.amp < 0
+            negative[case.events.neuron_id[neg], case.events.t[neg]] = True
         np.testing.assert_array_equal(np.all(bins == MAGENTA, axis=2), negative)
         assert negative.any() == (encoder == "predictive")
 
-    sha = json.loads((FIXTURES / "rate/shared_sine_v1/meta.json").read_text())[
-        "axon_encoder_git_sha"
-    ]
-    assert caption.count(sha) == len(EXPORTED)
+    # Each panel must carry its own export's pin, whatever the others use.
+    for encoder, block in zip(EXPORTED, caption.split("\n\n")):
+        meta = json.loads((FIXTURES / encoder / "shared_sine_v1/meta.json").read_text())
+        assert block.splitlines()[-1] == meta["axon_encoder_git_sha"], encoder
     for text in (
         "RateEncoder (deterministic streaming, no RNG)",
         "PoissonEncoder (stochastic, seeded RNG)",
