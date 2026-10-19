@@ -152,6 +152,26 @@ def test_gallery_requires_the_same_stimulus(tmp_path: Path, encoder: str) -> Non
         )
 
 
+@pytest.mark.parametrize(
+    "change, message",
+    [
+        # lcm(64, 704, 192) = 2112 columns: a max(T) fallback would misalign.
+        ({"n_steps": 192}, "lcm of n_steps"),
+        # lcm(8, 32, 97) = 3104 rows per panel would exhaust memory.
+        ({"n_neurons": 97}, "lcm of n_neurons"),
+    ],
+)
+def test_gallery_refuses_unalignable_geometry(
+    tmp_path: Path, change: dict, message: str
+) -> None:
+    phase = _copy(tmp_path, "rate", encoder="phase", **change)
+    if "n_steps" in change:
+        stimulus_path = phase / "stimulus.npy"
+        np.save(stimulus_path, np.repeat(np.load(stimulus_path), 3, axis=0))
+    with pytest.raises(spike_viz.SpikeIOError, match=message):
+        spike_viz.render_encoder_gallery(_dirs(phase=phase), rate_mode="streaming")
+
+
 def test_gallery_requires_every_encoder_named_explicitly() -> None:
     dirs = _dirs()
     del dirs["phase"]

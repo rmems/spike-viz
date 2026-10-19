@@ -51,7 +51,10 @@ _OUTLINE = "#41516a"
 # Reserved for event bins only; no text or decoration uses these colors.
 _EVENT = (255, 255, 255)
 _NEGATIVE = (255, 64, 208)
+# Every T and N must divide the shared panel size so bins stay integer-aligned
+# across panels; past these caps the gallery refuses rather than misalign.
 _MAX_LCM_WIDTH = 2048
+_MAX_LCM_HEIGHT = 1024
 _MIN_RASTER_HEIGHT = 96
 _CAPTION_WIDTH = 340
 
@@ -201,8 +204,16 @@ def render_encoder_gallery(
     neurons = [c.meta["n_neurons"] for c in real]
     width = math.lcm(*steps)
     if width > _MAX_LCM_WIDTH:
-        width = max(steps)
+        raise SpikeIOError(
+            f"gallery requires lcm of n_steps <= {_MAX_LCM_WIDTH} for a shared "
+            f"sample axis; got {width} from {sorted(set(steps))}"
+        )
     unit = math.lcm(*neurons)
+    if unit > _MAX_LCM_HEIGHT:
+        raise SpikeIOError(
+            f"gallery requires lcm of n_neurons <= {_MAX_LCM_HEIGHT} for a shared "
+            f"panel height; got {unit} from {sorted(set(neurons))}"
+        )
     height = unit * max(1, math.ceil(_MIN_RASTER_HEIGHT / unit))
 
     left, top, gap = 48, 64, 40

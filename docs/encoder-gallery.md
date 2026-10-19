@@ -60,8 +60,12 @@ record it.
   matched on rate, N or expected spike count.
 - **Shared time axis.** All panels have the same width, covering stimulus
   samples 0–64. Latency's 704 ticks therefore share the width that the 64-tick
-  panels use. Bins are only ever upsampled (nearest-neighbour), so no event is
-  dropped.
+  panels use. The panel width is the least common multiple of every T, and the
+  height is a multiple of the LCM of every N. Bins are therefore only ever
+  upsampled by whole factors (nearest-neighbour): no event is dropped and
+  sample boundaries line up. Exports whose T values have an LCM above 2048,
+  or whose N values have an LCM above 1024, raise `SpikeIOError` rather than
+  being misaligned.
 - **Independent neuron axis.** N differs (Population expands each channel to
   4 tuned neurons). Each panel labels its own `0 … N−1` range.
 - **`dt_seconds`.** Latency, Population, Temporal, Predictive and Phase are
