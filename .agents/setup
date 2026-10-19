@@ -1,0 +1,146 @@
+#!/usr/bin/env bash
+# Amp orb setup for spike-viz.
+#
+# Amp runs this from the repository root when it builds a project orb snapshot
+# (Debian 12, CPU only: orbs have no GPU). It must finish within 20 minutes and
+# be safe to run more than once. See https://ampcode.com/docs/orbs/customizing
+#
+# Installs only what this repo's CI and manifests need:
+#   - apt: curl, ca-certificates
+#   - uv + Python 3.14
+#   - venv with CPU torch (download.pytorch.org/whl/cpu) + -e ".[dev]"
+#   - tool directories exposed to later shells (/etc/profile.d + /usr/local/bin links)
+#
+# It ends with a dependency fetch/prebuild, not a test run.
+set -euo pipefail
+
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
+
+SUDO=""
+if [ "$(id -u)" -ne 0 ]; then
+  SUDO="sudo"
+fi
+
+# Install Debian packages that are not already present.
+apt_install() {
+  local missing=() pkg
+  for pkg in "$@"; do
+    if ! dpkg-query -W -f='${Status}' "$pkg" 2>/dev/null | grep -q "install ok installed"; then
+      missing+=("$pkg")
+    fi
+  done
+  if [ "${#missing[@]}" -gt 0 ]; then
+    $SUDO apt-get -o Acquire::Retries=5 update -qq
+    $SUDO env DEBIAN_FRONTEND=noninteractive apt-get -o Acquire::Retries=5 install -y --no-install-recommends "${missing[@]}"
+  fi
+}
+
+# --- System packages (curl + CA certs for the installers below) ---
+apt_install curl ca-certificates
+
+# --- Python (uv) ---
+# 0.9.0 is the first uv release that downloads stable CPython 3.14.
+# Older uv (0.5.14 on the Ubuntu runner) stops at "No download found".
+UV_MIN=0.9.0
+# Pinned release asset. SHA-256 is of uv-installer.sh from that release.
+UV_PIN=0.13.1
+UV_INSTALLER_SHA256=7c482d409673a53f4d9bd34ae95c9166be3b8d89ca82f27dd7bca3cab457afff
+
+version_at_least() {
+  local have="$1" want="$2" sorted
+  # Read all of sort's output. A pipe to head can SIGPIPE under pipefail.
+  sorted="$(printf '%s\n%s\n' "$want" "$have" | sort -V)"
+  if [ "${sorted%%$'\n'*}" = "$want" ]; then
+    return 0
+  fi
+  return 1
+}
+
+install_pinned_uv() {
+  local installer
+  installer="$(mktemp)"
+  # Expand now. installer is local, and EXIT can run after this function returns.
+  # shellcheck disable=SC2064
+  trap "rm -f $(printf '%q' "$installer")" EXIT
+  curl --proto '=https' --tlsv1.2 -LsSf --retry 5 --retry-all-errors \
+    -o "$installer" \
+    "https://github.com/astral-sh/uv/releases/download/${UV_PIN}/uv-installer.sh"
+  echo "${UV_INSTALLER_SHA256}  ${installer}" | sha256sum -c -
+  sh "$installer"
+  rm -f "$installer"
+  trap - EXIT
+  hash -r
+}
+
+venv_python_is_314() {
+  if [ ! -x .venv/bin/python ]; then
+    return 1
+  fi
+  if .venv/bin/python -c 'import sys; raise SystemExit(0 if sys.version_info[:2] == (3, 14) else 1)'; then
+    return 0
+  fi
+  return 1
+}
+
+install_cpu_torch() {
+  local attempt
+  for attempt in 1 2 3 4 5; do
+    if uv pip install --python .venv/bin/python --index-url https://download.pytorch.org/whl/cpu torch; then
+      return 0
+    fi
+    if [ "$attempt" -lt 5 ]; then
+      sleep 5
+    fi
+  done
+  echo "CPU torch install failed after 5 attempts" >&2
+  return 1
+}
+
+export PATH="$HOME/.local/bin:$PATH"
+if ! command -v uv >/dev/null 2>&1 || ! version_at_least "$(uv --version | awk '{print $2}')" "$UV_MIN"; then
+  install_pinned_uv
+fi
+if ! command -v uv >/dev/null 2>&1 || ! version_at_least "$(uv --version | awk '{print $2}')" "$UV_MIN"; then
+  echo "uv ${UV_MIN} or newer is required" >&2
+  exit 1
+fi
+# CPython 3.14. The project accepts >=3.10; the orb uses one interpreter.
+uv python install 3.14
+if ! venv_python_is_314; then
+  rm -rf .venv
+  uv venv --python 3.14 .venv
+fi
+if ! venv_python_is_314; then
+  echo "venv Python is not 3.14" >&2
+  exit 1
+fi
+# CI installs the CPU-only torch wheel first, then the package.
+install_cpu_torch
+uv pip install --python .venv/bin/python -e ".[dev]"
+
+# --- Expose the tools to later shells ---
+# The PATH exports above last only for this script; Amp starts the agent's shell
+# separately. Login shells get these directories from /etc/profile.d, and every other
+# shell finds the entry points through symlinks in /usr/local/bin (on the default PATH).
+# In login shells the venv's bin comes first, so python3 is the venv's Python.
+# Non-login shells do not read profile.d. Link only uv, uvx, python,
+# python3, and pytest into /usr/local/bin. python, python3, and pytest
+# come from the venv.
+repo_root="$(pwd)"
+tool_dirs=("$repo_root/.venv/bin" "$HOME/.local/bin")
+# shellcheck disable=SC2016 # $PATH must expand when the profile is sourced, not now.
+printf 'export PATH=%q:$PATH\n' "$(IFS=:; echo "${tool_dirs[*]}")" |
+  $SUDO tee /etc/profile.d/amp-orb-spike-viz.sh >/dev/null
+link_named() {
+  local tool="$1/$2"
+  if [ -f "$tool" ] && [ -x "$tool" ]; then
+    $SUDO ln -sfn "$tool" "/usr/local/bin/$2"
+  fi
+}
+link_named "$HOME/.local/bin" uv
+link_named "$HOME/.local/bin" uvx
+link_named "$repo_root/.venv/bin" python
+link_named "$repo_root/.venv/bin" python3
+link_named "$repo_root/.venv/bin" pytest
+
+echo "Amp orb setup for spike-viz finished."

@@ -1,0 +1,28 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+# Active CodeRabbit review config for rmems/spike-viz.
+language: en-US
+reviews:
+  profile: chill
+  request_changes_workflow: false
+  fail_commit_status: false
+  auto_review:
+    enabled: true
+    drafts: false
+  path_instructions:
+  - path: '**/*.py'
+    instructions: 'Python >=3.10. Required gate is CPU pytest after `pip install -e ".[dev]"` (that extra installs pytest only; see .github/workflows/ci.yml). Ruff is optional and is not installed by the dev extra, so a missing ruff is not a failure. Stay compatible with the declared Python floor. CUDA is optional: default pytest must pass without an NVIDIA GPU and CUDA tests must skip cleanly. Invalid inputs must fail loudly; never invent spikes.'
+  - path: src/spike_viz/io.py
+    instructions: 'Missing or invalid spike files, and out-of-range events found while loading, must raise SpikeIOError. In-memory checks in this module may still raise ValueError.'
+  - path: src/spike_viz/export.py
+    instructions: 'Missing or invalid export files and metadata must raise SpikeIOError. Do not invent spikes when a load fails.'
+  - path: src/spike_viz/hero.py
+    instructions: 'Incompatible or missing hero exports must raise SpikeIOError. Do not demand SpikeIOError from in-memory or render validators (events, render, bloom, gain_triptych); those raise ValueError.'
+  - path: fixtures/**
+    instructions: Golden export fixtures (`axon-encoder`); the loader must keep reading them.
+  tools:
+    ruff:
+      enabled: true
+    markdownlint:
+      enabled: true
+    biome:
+      enabled: false

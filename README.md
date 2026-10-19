@@ -32,17 +32,67 @@ pytest -q
 | [docs/CHARTER.md](docs/CHARTER.md) | Purpose, truth/paint split, non-goals |
 | [docs/schema.md](docs/schema.md) | Sparse/dense spike schema |
 | [docs/axon-encoder-export.md](docs/axon-encoder-export.md) | Export layout + golden fixtures |
+| [docs/encoder-gallery.md](docs/encoder-gallery.md) | Seven-encoder gallery on one shared stimulus (Phase pending) |
+| [docs/gain-triptych.md](docs/gain-triptych.md) | Real rate gain fixtures → captioned silence / normal / elevated PNG |
 | [AGENTS.md](AGENTS.md) | Rules for coding agents |
 | [REVIEW.md](REVIEW.md) | Local quality gate before merge |
 
-## Quick load (export case)
+## Quickstart: fixture → raster PNG
+
+Run from the repository root after the install step above. This loads the checked-in
+golden fixture and renders one CPU raster (no GPU needed; CUDA stays optional):
 
 ```python
-from spike_viz import load_axon_export
+from pathlib import Path
+
+from spike_viz import load_axon_export, render_raster
 
 case = load_axon_export("fixtures/axon-encoder/rate/tiny_synthetic")
 print(case.meta["encoder"], len(case.events))
+
+Path("out").mkdir(exist_ok=True)  # create the output directory on a clean checkout
+render_raster(
+    case.events,
+    n_steps=case.meta["n_steps"],
+    n_neurons=case.meta["n_neurons"],
+    scale=16,  # the tiny fixture is 8 x 4 pixels; upscale so it is visible
+    out_path="out/raster.png",
+)
 ```
+
+This writes `out/raster.png` (time horizontal, neuron vertical). The fixture is
+synthetic and only exercises the schema; see
+[docs/axon-encoder-export.md](docs/axon-encoder-export.md) for the export contract and
+[docs/schema.md](docs/schema.md) for the spike layout.
+
+## Rate vs Poisson hero
+
+![Rate deterministic streaming vs Poisson stochastic raster](docs/images/rate-vs-poisson.png)
+
+The same provenance-pinned Rust stimulus, shown with shared time/neuron scales:
+deterministic **streaming** Rate vs seeded stochastic Poisson. Captions include
+encoder, seed, `dt_seconds`, N, T, and the full axon-encoder commit. These fixtures
+use different rate mappings, so this is not a parameter-matched experiment.
+
+See [the hero guide](docs/rate-vs-poisson-hero.md) for the rendering command,
+exact axon-encoder source, and fixture regeneration instructions. No Python
+re-encoding, synthetic fallback, or GPU required.
+
+## Encoder gallery
+
+![Seven-slot axon-encoder gallery](docs/images/encoder-gallery.png)
+
+`render_encoder_gallery` stacks Rate, Poisson, Latency, Population, Temporal,
+Predictive and Phase rasters on one shared stimulus-sample axis, each panel with
+a visible mode and provenance caption. The Phase slot is explicitly **pending**:
+no PhaseEncoder export exists yet, and nothing is painted for it. See
+[the gallery guide](docs/encoder-gallery.md).
+
+## Rate gain triptych
+
+The [rate gain triptych](docs/gain-triptych.md) (`render_gain_triptych`) is three
+provenance-pinned Rust exports of one stimulus: an honestly empty silence panel,
+identity gain, and elevated gain, with visible gain and provenance captions.
 
 ## Preferred-direction ring (explicit geometry required)
 

@@ -8,8 +8,11 @@ Generation path: axon-encoder ships `examples/export_spike_viz.rs`, which
 writes a staging layout (`t.npy` / `neuron_id.npy` / `amp.npy` /
 `stimulus.npy` / `meta.json`); `scripts/pack_axon_export.py` in this repo
 assembles that staging into `spikes.npz` and validates the result through
-`load_axon_export`. `scripts/generate_fixtures.sh` regenerates every
-checked-in case from a pinned axon-encoder checkout.
+`load_axon_export`. `scripts/generate_fixtures.sh` regenerates the six
+`shared_sine_v1` encoder cases from a pinned axon-encoder checkout.
+The separate [gain triptych generation path](gain-triptych.md) regenerates
+the three rate `shared_sine_gain_{0,1,2}_v1` cases using a recorded patch to
+the upstream export example; no Python-side encoding is involved.
 
 Schema details: [schema.md](schema.md). Charter: [CHARTER.md](CHARTER.md).
 
@@ -123,6 +126,73 @@ case.stimulus_path  # Path | None
 
 Missing `spikes.npz` / `meta.json` → `SpikeIOError` (not empty spikes).
 
+## Provenance captions
+
+`provenance_caption(meta_path, *, out_path=None)` reads and validates the
+reconciled schema 1.0 `meta.json` using the same loader as `load_axon_export`.
+It returns a deterministic, single-line human-readable caption in fixed field
+order, independent of JSON key order. An optional `out_path` is `expanduser()`-expanded and resolved to an
+absolute path before metadata is read, so `..` is collapsed before any write.
+The parent directory must already exist; a missing parent raises `OSError`
+and no sidecar is created. When the parent exists, the sidecar is UTF-8
+plain text with a trailing newline, written only after metadata validation
+succeeds. If `out_path` resolves to the metadata file, including through a
+symlink or hard link, `SpikeIOError` is raised and that file is left
+unchanged. The original `meta.json` remains the machine-readable provenance
+source.
+
+Required metadata keys are `schema_version`, `encoder`, `dt_seconds`, `seed`,
+`n_neurons`, and `n_steps`, with the types and constraints in the table above.
+The caption displays `encoder`, `dt_seconds`, `seed`, **N** (`n_neurons`), and
+**T** (`n_steps`). `schema_version` is validated but not displayed.
+
+`axon_encoder_git_sha` is optional: a known string is displayed in full, never
+shortened or inferred from a local checkout. Missing, null, empty, or
+whitespace-only values display `axon_encoder_git_sha=unknown`. A non-string,
+non-null value raises `SpikeIOError`. Encoder and commit strings are
+JSON-quoted with non-ASCII escaped, so newlines, U+2028, U+2029, and lone
+surrogates stay on one UTF-8 line. If `synthetic` is `true`, the caption
+also displays `synthetic=true`. `false` and a missing key do **not** add
+that marker or claim the export is real. Any other present value raises
+`SpikeIOError`. Other optional metadata
+(`stimulus_notes`, `notes`, and exporter-specific keys) is not displayed.
+
+`dt_seconds` still means seconds per displayed step: for dimensionless
+encoders it is the export sampling convention, **not** a physical timebase
+claimed by the encoder. Missing or invalid required metadata fails loudly
+before writing a sidecar. File write failures propagate as `OSError`.
+
+Example (existing CPU raster renderer, no spikes invented):
+
+```python
+from pathlib import Path
+from spike_viz import load_axon_export, provenance_caption, render_raster
+
+case = load_axon_export("fixtures/axon-encoder/rate/shared_sine_v1")
+out = Path("rate.png")
+render_raster(
+    case.events,
+    n_steps=case.meta["n_steps"],
+    n_neurons=case.meta["n_neurons"],
+    scale=8,
+    out_path=out,
+)
+caption = provenance_caption(case.meta_path, out_path=out.with_suffix(".txt"))
+print(caption)
+```
+
+Output from that pinned fixture:
+
+```text
+encoder="rate" | dt_seconds=0.001 | seed=1592590337 | N=8 | T=64 | axon_encoder_git_sha="908a34797c8aaff0a57e0ea4167aa00f3780c940"
+```
+
+The Rate vs Poisson still and the gain triptych already paint their own visible
+provenance on the PNG. This helper is the plain-text sidecar for one export's
+`meta.json`. It does not add a footer or alter raster, bloom, hero, triptych,
+or direction-ring pixels. A comparison that uses it must retain provenance for
+**both** inputs.
+
 ## Preferred-direction geometry (optional renderer extension)
 
 Direction exports may add `preferred_angles_radians` to `meta.json`: a JSON
@@ -138,14 +208,17 @@ an additive metadata extension to schema `1.0`, not a change to spike arrays.
 
 **Current fixture gap for #17:** `population/shared_sine_v1` is a real,
 provenance-pinned PopulationEncoder export, but **not a direction export**.
-At its recorded commit `becb40d0c8722710677dabbf66d420a9c77f2eda`, axon-encoder
-[`src/encoders/population.rs`](https://github.com/Limen-Neural/axon-encoder/blob/becb40d0c8722710677dabbf66d420a9c77f2eda/src/encoders/population.rs)
-defines Gaussian tuning on a linear scalar interval. The exporter uses four
-neurons per input channel, scalar centers on `[0, 1]`, and spike channel
-`input_channel * 4 + neuron_index` (eight inputs, 32 neurons). There is no
-circular distance or preferred angle. Mapping these centers onto a circle
-would invent direction semantics, so this renderer intentionally rejects
-that fixture. Its spikes and metadata remain unchanged.
+Its recorded commit is `908a34797c8aaff0a57e0ea4167aa00f3780c940`. At that
+commit, axon-encoder
+[`src/encoders/population.rs`](https://github.com/Limen-Neural/axon-encoder/blob/908a34797c8aaff0a57e0ea4167aa00f3780c940/src/encoders/population.rs)
+defines Gaussian tuning on a linear scalar interval (`preferred_value` from
+`input_range`, absolute distance, no angle). The checked-in `encoder_config`
+is `num_neurons: 4`, `input_range: [0, 1]`, `tuning_width: 0.15`, and
+`meta.json` has no `preferred_angles_radians`. Spike channel is
+`input_channel * 4 + neuron_index` (eight inputs, 32 neurons). Mapping those
+scalar centers onto a circle would invent direction semantics, so this
+renderer intentionally rejects that fixture. Its spikes and metadata remain
+unchanged.
 
 To finish #17, the truth owner must supply genuine directional geometry and
 a provenance-pinned export carrying the angles, then spike-viz can check in
