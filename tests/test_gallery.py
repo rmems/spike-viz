@@ -181,6 +181,10 @@ def test_gallery_requires_every_encoder_named_explicitly() -> None:
         spike_viz.render_encoder_gallery(
             _dirs(bogus=FIXTURES / "rate/shared_sine_v1"), rate_mode="streaming"
         )
+    latency_only = dict.fromkeys(GALLERY_ENCODERS)
+    latency_only["latency"] = FIXTURES / "latency/shared_sine_v1"
+    with pytest.raises(spike_viz.SpikeIOError, match="non-window export"):
+        spike_viz.render_encoder_gallery(latency_only, rate_mode="streaming")
     with pytest.raises(spike_viz.SpikeIOError, match="at least one export"):
         spike_viz.render_encoder_gallery(
             dict.fromkeys(GALLERY_ENCODERS), rate_mode="streaming"

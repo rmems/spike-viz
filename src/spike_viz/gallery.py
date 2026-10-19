@@ -56,6 +56,7 @@ _NEGATIVE = (255, 64, 208)
 _MAX_LCM_WIDTH = 2048
 _MAX_LCM_HEIGHT = 1024
 _MIN_RASTER_HEIGHT = 96
+_WINDOW_ENCODERS = frozenset({"latency"})
 _CAPTION_WIDTH = 340
 
 
@@ -194,8 +195,14 @@ def render_encoder_gallery(
     if not stimuli:
         raise SpikeIOError("gallery requires at least one export")
 
-    # The shortest stimulus is the per-sample one; others hold it per window.
-    shared = min(stimuli.values(), key=lambda s: s.shape[0])
+    # Window encoders hold each sample for several ticks, so only the others
+    # can define one tick per sample; a latency-only set would mislabel it.
+    per_sample = [s for e, s in stimuli.items() if e not in _WINDOW_ENCODERS]
+    if not per_sample:
+        raise SpikeIOError(
+            "gallery requires a non-window export to define the shared sample axis"
+        )
+    shared = min(per_sample, key=lambda s: s.shape[0])
     samples, channels = shared.shape
     ticks = {e: _ticks_per_sample(cases[e], s, shared) for e, s in stimuli.items()}
 
