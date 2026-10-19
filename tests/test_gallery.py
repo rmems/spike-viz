@@ -172,6 +172,33 @@ def test_gallery_refuses_unalignable_geometry(
         spike_viz.render_encoder_gallery(_dirs(phase=phase), rate_mode="streaming")
 
 
+def test_gallery_rejects_phase_overlap_slack_until_supported(tmp_path: Path) -> None:
+    # TimeModel::overlapping: T = samples * step + (span - step), e.g. 64 + 3.
+    phase = _copy(tmp_path, "rate", encoder="phase", n_steps=67)
+    stimulus_path = phase / "stimulus.npy"
+    stimulus = np.load(stimulus_path)
+    np.save(stimulus_path, np.concatenate([stimulus, stimulus[-3:]]))
+    with pytest.raises(spike_viz.SpikeIOError, match="same stimulus"):
+        spike_viz.render_encoder_gallery(_dirs(phase=phase), rate_mode="streaming")
+
+
+def test_gallery_rejects_zero_channel_stimulus(tmp_path: Path) -> None:
+    case = _copy(tmp_path, "population")
+    np.save(case / "stimulus.npy", np.zeros((64, 0), dtype=np.float32))
+    with pytest.raises(spike_viz.SpikeIOError, match="channels"):
+        spike_viz.render_encoder_gallery(_dirs(population=case), rate_mode="streaming")
+
+
+def test_gallery_keeps_short_exports_legible() -> None:
+    # T=64 alone would be a 64 px panel; the pending message must fit.
+    only_rate = dict.fromkeys(GALLERY_ENCODERS)
+    only_rate["rate"] = FIXTURES / "rate/shared_sine_v1"
+    image = spike_viz.render_encoder_gallery(only_rate, rate_mode="streaming")
+    (raster,) = _rasters(image)
+    assert raster.shape[1] >= 2 * 512
+    assert raster.shape[1] % 64 == 0
+
+
 def test_gallery_requires_every_encoder_named_explicitly() -> None:
     dirs = _dirs()
     del dirs["phase"]

@@ -56,6 +56,7 @@ _NEGATIVE = (255, 64, 208)
 _MAX_LCM_WIDTH = 2048
 _MAX_LCM_HEIGHT = 1024
 _MIN_RASTER_HEIGHT = 96
+_MIN_RASTER_WIDTH = 512
 _WINDOW_ENCODERS = frozenset({"latency"})
 _CAPTION_WIDTH = 340
 
@@ -75,7 +76,11 @@ def _load_stimulus(case: AxonExportCase) -> np.ndarray:
     if case.stimulus_path is None:
         raise SpikeIOError(f"{case.path}: stimulus.npy required for comparison")
     stimulus = load_dense(case.stimulus_path)
-    if stimulus.ndim != 2 or stimulus.shape[0] != case.meta["n_steps"]:
+    if (
+        stimulus.ndim != 2
+        or stimulus.shape[0] != case.meta["n_steps"]
+        or stimulus.shape[1] < 1
+    ):
         raise SpikeIOError(f"{case.path}: stimulus must have shape [T, channels]")
     if not np.all(np.isfinite(stimulus)):
         raise SpikeIOError(f"{case.path}: stimulus must be finite")
@@ -163,7 +168,9 @@ def render_encoder_gallery(
     with a full axon-encoder commit and a ``stimulus.npy`` equal to the shared
     stimulus, row-repeated for window encoders such as latency. N and T may
     differ per encoder; every raster spans the same stimulus samples at the
-    same width, and N is stretched to a common panel height. Missing or
+    same width, and N is stretched to a common panel height. Phase exports
+    with ``TimeModel::overlapping`` slack (T not a whole multiple of the
+    sample count) are not supported yet and raise ``SpikeIOError``. Missing or
     incompatible exports raise ``SpikeIOError``; nothing is encoded.
 
     ``rate_mode`` is required for the same reason as in
@@ -221,6 +228,7 @@ def render_encoder_gallery(
             f"gallery requires lcm of n_neurons <= {_MAX_LCM_HEIGHT} for a shared "
             f"panel height; got {unit} from {sorted(set(neurons))}"
         )
+    width *= max(1, math.ceil(_MIN_RASTER_WIDTH / width))
     height = unit * max(1, math.ceil(_MIN_RASTER_HEIGHT / unit))
 
     left, top, gap = 48, 64, 40
