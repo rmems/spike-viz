@@ -58,6 +58,15 @@ Golden export fixture must load:
 python -c "from spike_viz import load_axon_export; print(load_axon_export('fixtures/axon-encoder/rate/tiny_synthetic').meta['encoder'])"
 ```
 
+Rust-first core (see `docs/rust-migration.md`): `cargo test --workspace` must
+pass from the repo root on CPU, and the cross-language parity gate must pass
+(skips cleanly when no Rust toolchain is installed):
+
+```bash
+cargo test --workspace
+pytest tests/test_rust_parity.py -q
+```
+
 Optional formatting / lint (only if configured in the repo):
 
 ```bash

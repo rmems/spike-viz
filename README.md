@@ -8,6 +8,27 @@ PyTorch + CUDA toolkit for visualizing spiking neural network encodings and acti
 encoding **truth**; **spike-viz** only **paints** (load spike exports → rasters / PNG).
 Bridge is export-first (`.npz` / `.npy`). See the charter for goals and non-goals.
 
+## Rust-first core (migration in progress)
+
+The paint path is migrating to a **Rust-first core** ([RM-1924], spike-viz
+issue #30): a Cargo workspace with the crate `rust/spike-viz-core`
+(reusable library + thin `spike-viz` CLI) that loads the same
+`meta.json` + `spikes.npz` contract and paints the same truth-preserving CPU
+raster. **The Python package below is not retired** — it stays the
+operational reference implementation until the documented parity gates pass.
+Rendering stays CPU-capable: the Rust build has no CUDA/NVIDIA dependency
+whatsoever, and there are no in-process bindings (the bridge is still
+export-first). Details: [docs/rust-migration.md](docs/rust-migration.md).
+
+```bash
+cargo test                                   # Rust core tests (CPU only)
+cargo run --bin spike-viz -- render fixtures/axon-encoder/rate/shared_sine_v1 \
+    --out out/rate.png --scale 8 --report out/rate.json
+pytest tests/test_rust_parity.py -q          # Rust/Python semantic parity gate
+```
+
+[RM-1924]: https://linear.app/rpd-34/issue/RM-1924/rustcore-establish-rust-first-spike-viz-with-python-parity-bridge
+
 ## Install
 
 ```bash
@@ -30,6 +51,7 @@ pytest -q
 | Doc | Purpose |
 |-----|---------|
 | [docs/CHARTER.md](docs/CHARTER.md) | Purpose, truth/paint split, non-goals |
+| [docs/rust-migration.md](docs/rust-migration.md) | Rust-first core state, layout, parity gates |
 | [docs/schema.md](docs/schema.md) | Sparse/dense spike schema |
 | [docs/axon-encoder-export.md](docs/axon-encoder-export.md) | Export layout + golden fixtures |
 | [docs/encoder-gallery.md](docs/encoder-gallery.md) | Seven-encoder gallery on one shared stimulus (Phase pending) |

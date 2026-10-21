@@ -4,6 +4,13 @@ spike-viz side of the **export-first** bridge. Rust
 [axon-encoder](https://github.com/Limen-Neural/axon-encoder) is encoding truth;
 this document defines what files spike-viz will load.
 
+The contract is **language-neutral and stable**: it is loaded by the Python
+reference implementation (`src/spike_viz/`) and by the Rust-first core
+(`rust/spike-viz-core`) — the Rust/Python parity gate renders the same
+checked-in rate fixtures through both. See
+[rust-migration.md](rust-migration.md) for the gates and the documented
+loader-level divergences.
+
 Generation path: axon-encoder ships `examples/export_spike_viz.rs`, which
 writes a staging layout (`t.npy` / `neuron_id.npy` / `amp.npy` /
 `stimulus.npy` / `meta.json`); `scripts/pack_axon_export.py` in this repo

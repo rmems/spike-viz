@@ -1,0 +1,187 @@
+//! Thin parity-bridge CLI for the Rust-first spike-viz core.
+//!
+//! Intentionally minimal (`render` only): the library is the reusable core,
+//! and this binary exists so the documented Rust/Python parity gates
+//! (see `docs/rust-migration.md` and `tests/test_rust_parity.py`) can run
+//! the Rust render end-to-end. No live UI, no video, no GPU requirement.
+
+use std::path::PathBuf;
+use std::process::ExitCode;
+
+use spike_viz_core::{load_axon_export, render_raster, write_png, SemanticReport};
+
+const USAGE: &str = "spike-viz (Rust core) — render axon-encoder spike exports to CPU rasters
+
+USAGE:
+    spike-viz render <CASE_DIR> [--out <PNG>] [--scale <N>] [--report <JSON>]
+
+ARGS:
+    <CASE_DIR>      Export case directory holding meta.json + spikes.npz
+                    (optional stimulus.npy is ignored by the raster path).
+
+OPTIONS:
+    --out <PNG>     Write the rendered raster as an 8-bit RGB PNG.
+                    The parent directory must already exist.
+    --scale <N>     Nearest-neighbor upscale factor (integer >= 1). Default 1.
+    --report <JSON> Write the semantic parity report (events, grid geometry,
+                    peak, final intensities) as JSON.
+
+At least one of --out / --report is required. Rendering is CPU-only.";
+
+fn main() -> ExitCode {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    match run(&args) {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(CliError::Usage(message)) => {
+            eprintln!("error: {message}\n\n{USAGE}");
+            ExitCode::from(2)
+        }
+        Err(CliError::Spike(err)) => {
+            eprintln!("error: {err}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+enum CliError {
+    Usage(String),
+    Spike(spike_viz_core::SpikeIOError),
+}
+
+impl From<spike_viz_core::SpikeIOError> for CliError {
+    fn from(err: spike_viz_core::SpikeIOError) -> Self {
+        CliError::Spike(err)
+    }
+}
+
+impl From<std::io::Error> for CliError {
+    fn from(err: std::io::Error) -> Self {
+        CliError::Spike(spike_viz_core::SpikeIOError::Io(err))
+    }
+}
+
+impl From<serde_json::Error> for CliError {
+    fn from(err: serde_json::Error) -> Self {
+        CliError::Spike(spike_viz_core::SpikeIOError::io(format!(
+            "failed to write report: {err}"
+        )))
+    }
+}
+
+struct RenderArgs {
+    case_dir: PathBuf,
+    out: Option<PathBuf>,
+    report: Option<PathBuf>,
+    scale: usize,
+}
+
+fn run(args: &[String]) -> Result<(), CliError> {
+    let parsed = parse_args(args)?;
+    let case = load_axon_export(&parsed.case_dir)?;
+    let raster = render_raster(
+        &case.events,
+        case.meta.n_steps as usize,
+        case.meta.n_neurons as usize,
+        parsed.scale,
+    )?;
+
+    if let Some(out) = &parsed.out {
+        write_png(&raster, out)?;
+    }
+    if let Some(report_path) = &parsed.report {
+        let report = SemanticReport::from_render(&case, &raster)?;
+        let file = std::fs::File::create(report_path)?;
+        let mut writer = std::io::BufWriter::new(file);
+        serde_json::to_writer_pretty(&mut writer, &report)?;
+        // One trailing newline keeps the report plain-text diffable.
+        use std::io::Write;
+        writer.write_all(b"\n")?;
+        writer.flush()?;
+    }
+
+    println!(
+        "encoder={} | N={} | T={} | events={} | scale={} | peak={} | out={} | report={}",
+        case.meta.encoder,
+        case.meta.n_neurons,
+        case.meta.n_steps,
+        case.events.len(),
+        parsed.scale,
+        raster.peak(),
+        parsed
+            .out
+            .as_ref()
+            .map(|p| p.display().to_string())
+            .unwrap_or_else(|| "-".to_string()),
+        parsed
+            .report
+            .as_ref()
+            .map(|p| p.display().to_string())
+            .unwrap_or_else(|| "-".to_string()),
+    );
+    Ok(())
+}
+
+fn parse_args(args: &[String]) -> Result<RenderArgs, CliError> {
+    let mut iter = args.iter();
+    let subcommand = iter.next().ok_or_else(|| {
+        CliError::Usage("missing subcommand; expected `render <CASE_DIR>`".to_string())
+    })?;
+    if subcommand != "render" {
+        return Err(CliError::Usage(format!(
+            "unknown subcommand {subcommand:?}; expected `render <CASE_DIR>`"
+        )));
+    }
+
+    let mut case_dir: Option<PathBuf> = None;
+    let mut out: Option<PathBuf> = None;
+    let mut report: Option<PathBuf> = None;
+    let mut scale: usize = 1;
+
+    while let Some(arg) = iter.next() {
+        let (flag, inline_value) = match arg.split_once('=') {
+            Some((flag, value)) => (flag.to_string(), Some(value.to_string())),
+            None => (arg.clone(), None),
+        };
+        let mut value = |flag: &str| -> Result<String, CliError> {
+            if let Some(value) = inline_value.clone() {
+                return Ok(value);
+            }
+            iter.next()
+                .cloned()
+                .ok_or_else(|| CliError::Usage(format!("missing value for {flag}")))
+        };
+        match flag.as_str() {
+            "--out" => out = Some(PathBuf::from(value("--out")?)),
+            "--report" => report = Some(PathBuf::from(value("--report")?)),
+            "--scale" => {
+                let raw = value("--scale")?;
+                scale = raw.parse().map_err(|_| {
+                    CliError::Usage(format!("--scale must be an integer >= 1, got {raw:?}"))
+                })?;
+            }
+            _ if flag.starts_with("--") => {
+                return Err(CliError::Usage(format!("unknown option {flag:?}")));
+            }
+            _ => {
+                if case_dir.is_some() {
+                    return Err(CliError::Usage(format!("unexpected argument {arg:?}")));
+                }
+                case_dir = Some(PathBuf::from(arg));
+            }
+        }
+    }
+
+    let case_dir =
+        case_dir.ok_or_else(|| CliError::Usage("missing <CASE_DIR> argument".to_string()))?;
+    if out.is_none() && report.is_none() {
+        return Err(CliError::Usage(
+            "nothing to do: pass --out <PNG> and/or --report <JSON>".to_string(),
+        ));
+    }
+    Ok(RenderArgs {
+        case_dir,
+        out,
+        report,
+        scale,
+    })
+}
