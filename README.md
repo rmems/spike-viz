@@ -118,3 +118,6 @@ For dimensionless encoders, dt is the export sampling convention.
 has linear scalar Gaussian tuning, not preferred directions. It is rejected
 rather than silently mapped onto a ring. See the
 [export contract and remaining prerequisite](docs/axon-encoder-export.md#preferred-direction-geometry-optional-renderer-extension).
+
+Package renderers and hero stills land under later `v0.1` / `v0.2` issues
+([tracker](https://github.com/rmems/spike-viz/issues)).
