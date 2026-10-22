@@ -40,8 +40,10 @@ fn every_checked_in_fixture_loads() {
         // Geometry must be at least 1x1 even when the export is silent.
         assert!(case.meta.n_steps >= 1);
         assert!(case.meta.n_neurons >= 1);
-        // Events were bounds-checked during load; a silent export is valid.
-        assert_eq!(case.events.len(), case.events.t().len());
+        // Loader consistency: every present member shares one length.
+        if let Some(amp) = case.events.amp() {
+            assert_eq!(amp.len(), case.events.t().len());
+        }
     }
 }
 
@@ -130,6 +132,65 @@ fn negative_time_rejected() {
     write_case(&dir, &valid_meta(), &[-1], &[0], None);
     let err = load_axon_export(&dir).unwrap_err();
     assert!(err.to_string().contains("t out of range"), "got: {err}");
+}
+
+#[test]
+fn huge_geometry_bounds_do_not_wrap() {
+    // n_steps above i64::MAX is contract-valid metadata; a wrapping i64
+    // cast in the bounds check would reject the in-range event t=0.
+    let dir = temp_dir("huge-geometry");
+    let mut meta = valid_meta();
+    meta["n_steps"] = serde_json::json!(u64::MAX);
+    write_case(&dir, &meta, &[0], &[0], None);
+    let case = load_axon_export(&dir).unwrap();
+    assert_eq!(case.events.len(), 1);
+}
+
+#[test]
+fn wrongly_typed_provenance_fails_loud() {
+    // A present but wrongly typed provenance field must fail loud, not
+    // silently read as absent in the semantic report.
+    for (key, wrong) in [
+        ("axon_encoder_git_sha", serde_json::json!(42)),
+        ("synthetic", serde_json::json!("yes")),
+    ] {
+        let dir = temp_dir("bad-provenance");
+        let mut meta = valid_meta();
+        meta[key] = wrong;
+        write_case(&dir, &meta, &[], &[], None);
+        let err = load_axon_export(&dir).unwrap_err();
+        assert!(err.to_string().contains(key), "got: {err}");
+    }
+}
+
+#[test]
+fn explicit_null_provenance_reads_as_absent() {
+    // Synthetic fixtures conventionally write `"axon_encoder_git_sha": null`;
+    // null and absent must both load as None.
+    let dir = temp_dir("null-provenance");
+    let mut meta = valid_meta();
+    meta["axon_encoder_git_sha"] = serde_json::json!(null);
+    meta["synthetic"] = serde_json::json!(null);
+    write_case(&dir, &meta, &[], &[], None);
+    let case = load_axon_export(&dir).unwrap();
+    assert_eq!(case.meta.axon_encoder_git_sha, None);
+    assert_eq!(case.meta.synthetic, None);
+}
+
+#[test]
+fn relative_case_dir_resolves_to_absolute() {
+    // Mirror of the Python loader's `_as_path` (expanduser + resolve):
+    // loading through a relative spelling still yields a resolved case
+    // path, so error messages and downstream joins are deterministic.
+    let relative = std::path::Path::new("../..")
+        .join("fixtures")
+        .join("axon-encoder")
+        .join("rate")
+        .join("tiny_synthetic");
+    let case = load_axon_export(&relative).unwrap();
+    assert!(case.path.is_absolute(), "path: {}", case.path.display());
+    assert_eq!(case.path, golden());
+    assert_eq!(case.spikes_path, golden().join("spikes.npz"));
 }
 
 #[test]

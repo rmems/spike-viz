@@ -101,14 +101,11 @@ pub fn load_meta<P: AsRef<Path>>(path: P) -> Result<ExportMeta, SpikeIOError> {
     let encoder = require_non_empty_string(obj, "encoder", path)?;
     let schema_version = require_schema_version(obj, path)?;
 
-    let axon_encoder_git_sha = match obj.get("axon_encoder_git_sha") {
-        Some(Value::String(sha)) => Some(sha.clone()),
-        _ => None,
-    };
-    let synthetic = match obj.get("synthetic") {
-        Some(Value::Bool(flag)) => Some(*flag),
-        _ => None,
-    };
+    // Optional provenance fields tolerate absence and explicit null, but a
+    // present value of the wrong type must fail loud — malformed
+    // provenance must not silently read as absent.
+    let axon_encoder_git_sha = optional_string(obj, "axon_encoder_git_sha", path)?;
+    let synthetic = optional_bool(obj, "synthetic", path)?;
 
     Ok(ExportMeta {
         schema_version,
@@ -174,6 +171,42 @@ fn require_seed(obj: &serde_json::Map<String, Value>, path: &Path) -> Result<u64
         }
         _ => Err(SpikeIOError::Invalid(format!(
             "{}: 'seed' must be an integer",
+            path.display()
+        ))),
+    }
+}
+
+/// Optional string field: absent or `null` → `None`, string → `Some`.
+///
+/// A present value of any other type is rejected: malformed provenance
+/// must fail loud rather than silently read as absent.
+fn optional_string(
+    obj: &serde_json::Map<String, Value>,
+    key: &str,
+    path: &Path,
+) -> Result<Option<String>, SpikeIOError> {
+    match obj.get(key) {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::String(value)) => Ok(Some(value.clone())),
+        Some(other) => Err(SpikeIOError::Invalid(format!(
+            "{}: '{key}' must be a string or null, got {other}",
+            path.display()
+        ))),
+    }
+}
+
+/// Optional boolean field: absent or `null` → `None`, boolean → `Some`.
+/// See [`optional_string`] for the fail-loud rule.
+fn optional_bool(
+    obj: &serde_json::Map<String, Value>,
+    key: &str,
+    path: &Path,
+) -> Result<Option<bool>, SpikeIOError> {
+    match obj.get(key) {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::Bool(value)) => Ok(Some(*value)),
+        Some(other) => Err(SpikeIOError::Invalid(format!(
+            "{}: '{key}' must be a boolean or null, got {other}",
             path.display()
         ))),
     }

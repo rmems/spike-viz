@@ -108,6 +108,13 @@ known differences, kept loud on both sides:
   them when integral. The contract fixtures use `int64`/`float32`.
 - **`allow_pickle`**: object-dtype arrays fail to load in both languages; the
   contract has no pickle channel.
+- **Optional provenance fields** (`axon_encoder_git_sha`, `synthetic`): Python
+  passes whatever JSON holds through unvalidated; Rust fails loud when a
+  present value has the wrong type (absent and explicit `null` both read as
+  absent). Malformed provenance is invalid data, and the charter says fail
+  loud — never silently report provenance that is not there.
+- **`~user` paths**: Python's `expanduser` resolves other users' home
+  directories; the Rust loader expands only a leading `~` / `~/` via `$HOME`.
 - **PNG bytes** may differ (compression), so parity compares decoded pixels,
   not file hashes.
 
