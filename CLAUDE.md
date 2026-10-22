@@ -34,7 +34,7 @@ Before claiming done, follow the gate in `REVIEW.md`.
 - `rust/spike-viz-core/`: Rust-first core (workspace member; lib + `spike-viz` CLI) — export-contract load, CPU raster, PNG, `SemanticReport` parity bridge. Python stays the reference until the parity gates pass (see `docs/rust-migration.md`).
 - `fixtures/axon-encoder/<encoder>/<case>/`: golden exports (`meta.json`, `spikes.npz`, optional `stimulus.npy`). Layout contract is in `docs/axon-encoder-export.md`.
 - `tests/`: CPU pytest suite; `tests/conftest.py` skips `cuda`-marked tests when no GPU is present.
-- `scripts/`: fixture generation and packing helpers (`pack_axon_export.py`, `make_tiny_synthetic_fixture.py`, `axon_gain_export.patch`).
+- `scripts/`: fixture generation and packing helpers (`pack_axon_export.py`, `make_tiny_synthetic_fixture.py`, `make_tiny_fractional_amp_fixture.py`, `axon_gain_export.patch`).
 - `.agents/setup`: Amp orb bootstrap script, not a project build step.
 
 ## Invariants and non-goals (from `AGENTS.md`, `docs/CHARTER.md`, `README.md`)

@@ -24,7 +24,7 @@ OPTIONS:
                     The parent directory must already exist.
     --scale <N>     Nearest-neighbor upscale factor (integer >= 1). Default 1.
     --report <JSON> Write the semantic parity report (events, grid geometry,
-                    peak, final intensities) as JSON.
+                    peak, final intensities) as JSON. Must differ from --out.
 
 At least one of --out / --report is required. Rendering is CPU-only.";
 
@@ -178,10 +178,32 @@ fn parse_args(args: &[String]) -> Result<RenderArgs, CliError> {
             "nothing to do: pass --out <PNG> and/or --report <JSON>".to_string(),
         ));
     }
+    if let (Some(out), Some(report)) = (&out, &report) {
+        if same_target(out, report) {
+            return Err(CliError::Usage(
+                "--out and --report must be different paths: writing the report \
+                 would truncate the just-written PNG"
+                    .to_string(),
+            ));
+        }
+    }
     Ok(RenderArgs {
         case_dir,
         out,
         report,
         scale,
     })
+}
+
+/// True when both paths point at the same file.
+///
+/// When both paths exist, fully resolved paths are compared (covers
+/// symlinks and differently-spelled aliases). Otherwise — the common case,
+/// since `--out` / `--report` targets usually do not exist yet — the paths
+/// are lexically absolutized and compared without touching the filesystem.
+fn same_target(a: &std::path::Path, b: &std::path::Path) -> bool {
+    match (std::fs::canonicalize(a), std::fs::canonicalize(b)) {
+        (Ok(a), Ok(b)) => a == b,
+        _ => std::path::absolute(a).ok() == std::path::absolute(b).ok(),
+    }
 }

@@ -45,7 +45,9 @@ module was deleted or moved. Rust and Python never share state in-process.
 Ported to Rust (parity with the Python reference):
 
 - `load_sparse` (`.npz` member reading, dtype rules incl. integral floats,
-  unsigned/bool widening, loud rejection of complex/object/structured dtypes)
+  unsigned/bool index widening, float/signed-int/bool amplitudes — unsigned
+  amp is rejected, mirroring Python — and loud rejection of
+  complex/object/structured dtypes)
 - `load_meta` / `load_axon_export` (required keys, strict types, `schema_version`
   limited to `"1.0"`, geometry `>= 1`, finite positive `dt_seconds`,
   event-vs-geometry bounds)
@@ -78,7 +80,7 @@ compared within ±1 intensity level.
 |------|---------|----------------|
 | Rust invariants | `cargo test --workspace` | contract loading, raster truth rules, invalid data fails loud, empty/silent activity, CLI |
 | Python regression | `pytest -q` | the reference implementation is unchanged and still green |
-| Cross-language parity | `pytest tests/test_rust_parity.py -q` | Rust renders the checked-in rate fixtures (`tiny_synthetic`, `shared_sine_v1`, silent `shared_sine_gain_0_v1`) with the same events, geometry, and intensities as Python |
+| Cross-language parity | `pytest tests/test_rust_parity.py -q` | Rust renders the checked-in rate fixtures (`tiny_synthetic`, `tiny_fractional_amp`, `shared_sine_v1`, silent `shared_sine_gain_0_v1`) with the same events, geometry, and intensities as Python |
 
 The parity test runs the CLI end-to-end:
 

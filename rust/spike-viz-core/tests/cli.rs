@@ -100,6 +100,58 @@ fn missing_output_target_is_a_usage_error() {
 }
 
 #[test]
+fn same_out_and_report_path_is_a_usage_error() {
+    // `File::create` truncates, so a report written to the PNG path would
+    // silently replace the just-written image with JSON while exiting 0.
+    let dir = temp_dir("cli-same-path");
+    let target = dir.join("raster.png");
+    let status = cli()
+        .args([
+            "render",
+            fixture("rate", "tiny_synthetic").to_str().unwrap(),
+            "--out",
+            target.to_str().unwrap(),
+            "--report",
+            target.to_str().unwrap(),
+        ])
+        .output()
+        .expect("run spike-viz");
+    assert_eq!(status.status.code(), Some(2));
+    let stderr = String::from_utf8_lossy(&status.stderr);
+    assert!(
+        stderr.contains("must be different paths"),
+        "stderr: {stderr}"
+    );
+    // Nothing was written to the target.
+    assert!(!target.exists(), "target must not be created");
+}
+
+#[test]
+fn aliased_out_and_report_path_is_a_usage_error() {
+    // Differently-spelled paths to the same target (`./` alias, relative
+    // spelling) must be caught too.
+    let dir = temp_dir("cli-aliased-path");
+    let status = cli()
+        .args([
+            "render",
+            fixture("rate", "tiny_synthetic").to_str().unwrap(),
+            "--out",
+            "raster.png",
+            "--report",
+            "./raster.png",
+        ])
+        .current_dir(&dir)
+        .output()
+        .expect("run spike-viz");
+    assert_eq!(status.status.code(), Some(2));
+    let stderr = String::from_utf8_lossy(&status.stderr);
+    assert!(
+        stderr.contains("must be different paths"),
+        "stderr: {stderr}"
+    );
+}
+
+#[test]
 fn unknown_subcommand_is_a_usage_error() {
     let status = cli().args(["paint", "x"]).output().expect("run spike-viz");
     assert_eq!(status.status.code(), Some(2));

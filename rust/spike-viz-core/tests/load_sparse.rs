@@ -242,6 +242,25 @@ fn int_amp_casts_to_f32() {
 }
 
 #[test]
+fn unsigned_amp_rejected_like_python() {
+    // Python `_as_float32_amp` only accepts dtype kinds f/i/b, so an
+    // unsigned amp must fail loud in Rust too — not silently widen to f32
+    // and diverge from the reference loader.
+    let dir = temp_dir("uint-amp");
+    let path = dir.join("spikes_uint_amp.npz");
+    let mut members = index_pair("<i8", &i64_data(&[0]), "<i8", &i64_data(&[1]));
+    members.push(RawMember {
+        name: "amp".into(),
+        descr: "<u4".into(),
+        shape: vec![1],
+        data: 1u32.to_le_bytes().to_vec(),
+    });
+    write_npz_raw(&path, &members);
+    let err = load_sparse(&path).unwrap_err();
+    assert!(err.to_string().contains("real numeric"), "got: {err}");
+}
+
+#[test]
 fn float64_amp_overflow_rejected() {
     let dir = temp_dir("f64-amp-overflow");
     let path = dir.join("spikes.npz");

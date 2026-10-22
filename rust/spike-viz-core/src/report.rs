@@ -6,11 +6,17 @@ use crate::render::{render_raster, Raster};
 
 /// One sparse event, in load order. `amp` is `null` when the export
 /// omitted the array.
+///
+/// `amp` carries the in-memory `f32` amplitude **widened to `f64`**: serde
+/// writes the shortest round-trip *f32* decimal for an `f32` field (e.g.
+/// `0.1`), which does not equal the `f64` widening of the same value
+/// (`0.10000000149011612`) that the Python reference compares against.
+/// Widening before serialization keeps the parity comparison exact.
 #[derive(Debug, Clone, Serialize)]
 pub struct EventRecord {
     pub t: i64,
     pub neuron_id: i64,
-    pub amp: Option<f32>,
+    pub amp: Option<f64>,
 }
 
 /// One non-black raster bin after normalization: final `u8` intensity for
@@ -51,8 +57,9 @@ pub struct SemanticReport {
     pub width: usize,
     /// PNG height in pixels (`n_neurons * scale`).
     pub height: usize,
-    /// Pre-normalization peak of the frame.
-    pub peak: f32,
+    /// Pre-normalization peak of the frame, widened to `f64` so the JSON
+    /// carries the exact `f32` value (see [`EventRecord::amp`]).
+    pub peak: f64,
     /// Events in load order.
     pub events: Vec<EventRecord>,
     /// Non-black bins in `(t, neuron_id)` row-major order.
@@ -75,8 +82,19 @@ pub fn semantic_report(
 
 impl SemanticReport {
     /// Build the semantic report from an already-rendered raster.
+    ///
+    /// The raster must have been rendered from the same case geometry:
+    /// independent `case` and `raster` arguments could silently misreport
+    /// otherwise, so a grid mismatch fails loud.
     pub fn from_render(case: &AxonExportCase, raster: &Raster) -> Result<Self, SpikeIOError> {
         let (n_steps, n_neurons) = raster.grid_shape();
+        if (n_steps as u64, n_neurons as u64) != (case.meta.n_steps, case.meta.n_neurons) {
+            return Err(SpikeIOError::Invalid(format!(
+                "raster grid {n_steps}x{n_neurons} (n_steps, n_neurons) does not match case \
+                 geometry {}x{}",
+                case.meta.n_steps, case.meta.n_neurons
+            )));
+        }
         let mut bins = Vec::new();
         // Row-major over the [T, N] grid (time-major, neuron-minor).
         for t in 0..n_steps {
@@ -104,16 +122,16 @@ impl SemanticReport {
             n_neurons: case.meta.n_neurons,
             n_events: case.events.len(),
             scale: raster.scale(),
-            width: raster.width()?,
-            height: raster.height()?,
-            peak: raster.peak(),
+            width: raster.width(),
+            height: raster.height(),
+            peak: raster.peak() as f64,
             events: case
                 .events
                 .iter()
                 .map(|(t, neuron, amp)| EventRecord {
                     t,
                     neuron_id: neuron,
-                    amp: if amp_present { Some(amp) } else { None },
+                    amp: if amp_present { Some(amp as f64) } else { None },
                 })
                 .collect(),
             bins,

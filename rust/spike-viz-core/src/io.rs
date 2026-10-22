@@ -21,8 +21,10 @@ const INT64_LIMIT: f64 = 9_223_372_036_854_775_808.0;
 /// - `t` / `neuron_id`: any integer width, unsigned integers, booleans, or
 ///   float arrays whose values are all finite **and integral** (cast, never
 ///   truncated). Complex, string, object, and structured dtypes are rejected.
-/// - `amp`: any float width, integer, or boolean array, cast to `f32`; values
-///   that overflow to non-finite `f32` are rejected.
+/// - `amp`: any float width, **signed** integer, or boolean array, cast to
+///   `f32`; values that overflow to non-finite `f32` are rejected. Unsigned
+///   integers are rejected, mirroring the Python `_as_float32_amp` rules
+///   (`dtype.kind` must be `f`/`i`/`b`).
 ///
 /// Raises [`SpikeIOError`] when the file is missing, not `.npz`, the
 /// required arrays are absent, or the arrays are invalid. A missing file is
@@ -190,30 +192,6 @@ fn read_amp_array<R: std::io::Read>(npy: NpyFile<R>, name: &str) -> Result<Vec<f
                 .collect(),
             (TypeChar::Int, 1) => npy
                 .into_vec::<i8>()
-                .map_err(|e| read_failed(name, e))?
-                .into_iter()
-                .map(|value| value as f32)
-                .collect(),
-            (TypeChar::Uint, 8) => npy
-                .into_vec::<u64>()
-                .map_err(|e| read_failed(name, e))?
-                .into_iter()
-                .map(|value| value as f32)
-                .collect(),
-            (TypeChar::Uint, 4) => npy
-                .into_vec::<u32>()
-                .map_err(|e| read_failed(name, e))?
-                .into_iter()
-                .map(|value| value as f32)
-                .collect(),
-            (TypeChar::Uint, 2) => npy
-                .into_vec::<u16>()
-                .map_err(|e| read_failed(name, e))?
-                .into_iter()
-                .map(|value| value as f32)
-                .collect(),
-            (TypeChar::Uint, 1) => npy
-                .into_vec::<u8>()
                 .map_err(|e| read_failed(name, e))?
                 .into_iter()
                 .map(|value| value as f32)

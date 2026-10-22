@@ -24,7 +24,7 @@ fn golden_fixture_report() {
     assert_eq!(report.axon_encoder_git_sha, None);
 
     // Events preserved in load order, no invention or dropping.
-    let expected: Vec<(i64, i64, Option<f32>)> = vec![
+    let expected: Vec<(i64, i64, Option<f64>)> = vec![
         (0, 0, Some(1.0)),
         (1, 0, Some(1.0)),
         (1, 2, Some(1.0)),
@@ -33,7 +33,7 @@ fn golden_fixture_report() {
         (5, 3, Some(1.0)),
         (7, 2, Some(1.0)),
     ];
-    let actual: Vec<(i64, i64, Option<f32>)> = report
+    let actual: Vec<(i64, i64, Option<f64>)> = report
         .events
         .iter()
         .map(|event| (event.t, event.neuron_id, event.amp))
@@ -116,4 +116,51 @@ fn from_render_matches_render_report() {
     assert_eq!(report.scale, 4);
     assert_eq!((report.width, report.height), (32, 16));
     assert_eq!(report.n_events, 7);
+}
+
+#[test]
+fn from_render_rejects_geometry_mismatch() {
+    // `from_render` takes independent `case` and `raster` arguments; a
+    // raster rendered from different geometry must fail loud rather than
+    // silently misreport bins against the wrong case.
+    let case = load_axon_export(fixture("rate", "tiny_synthetic")).unwrap();
+    // Geometry large enough to hold every event but different from the
+    // case meta (8x4): from_render must reject the mismatch.
+    let raster = render_raster(&case.events, 16, 8, 1).unwrap();
+    let err = SemanticReport::from_render(&case, &raster).unwrap_err();
+    assert!(
+        err.to_string().contains("does not match case geometry"),
+        "got: {err}"
+    );
+}
+
+#[test]
+fn fractional_amp_serializes_exactly_for_parity() {
+    // The Python parity gate widens the in-memory f32 amplitudes to f64
+    // and compares with `==`. serde_json writes the shortest round-trip
+    // *f32* decimal for an f32 field (`0.1`), which is NOT equal to the
+    // f64 widening (`0.10000000149011612`) — so the report must widen
+    // before serializing. Fractional amps only exist in this fixture;
+    // every other checked-in case has representable amps (0.5/1.0).
+    let case = load_axon_export(fixture("rate", "tiny_fractional_amp")).unwrap();
+    let report = semantic_report(&case, 1).unwrap();
+    let json = serde_json::to_string(&report).expect("serialize report");
+    assert!(
+        json.contains("\"amp\":0.10000000149011612"),
+        "exact f64 widening of 0.1f32 missing: {json}"
+    );
+    assert!(
+        json.contains("\"amp\":0.699999988079071"),
+        "exact f64 widening of 0.7f32 missing: {json}"
+    );
+    // 0.0 (polarity-false export) is serialized as a plain zero, and the
+    // zero-amp event renders at full intensity (substituted unit amplitude)
+    // while the fractional amps land on 26 (0.1) and 178 (0.7).
+    assert!(
+        json.contains("\"amp\":0.0}"),
+        "raw zero amp missing: {json}"
+    );
+    let values: Vec<u8> = report.bins.iter().map(|bin| bin.value).collect();
+    assert_eq!(values, vec![26, 178, 255, 255]);
+    assert_eq!(report.peak, 1.0);
 }

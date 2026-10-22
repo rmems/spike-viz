@@ -39,7 +39,11 @@ fn pixel_len(width: usize, height: usize) -> Result<usize, SpikeIOError> {
     Ok(len)
 }
 
-fn raster_len(n_steps: usize, n_neurons: usize, scale: usize) -> Result<usize, SpikeIOError> {
+fn raster_geometry(
+    n_steps: usize,
+    n_neurons: usize,
+    scale: usize,
+) -> Result<(usize, usize, usize), SpikeIOError> {
     let len = grid_len(n_steps, n_neurons)?;
     if scale < 1 {
         return Err(SpikeIOError::Invalid(
@@ -49,7 +53,8 @@ fn raster_len(n_steps: usize, n_neurons: usize, scale: usize) -> Result<usize, S
     let width = scaled_dimension(n_steps, scale)?;
     let height = scaled_dimension(n_neurons, scale)?;
     pixel_len(width, height)?;
-    Ok(len)
+    // (dense-grid length, image width, image height)
+    Ok((len, width, height))
 }
 
 fn buffer<T>(len: usize) -> Result<Vec<T>, SpikeIOError> {
@@ -166,6 +171,10 @@ pub struct Raster {
     n_steps: usize,
     n_neurons: usize,
     scale: usize,
+    /// Validated image width (`n_steps * scale`), within the PNG limits.
+    width: usize,
+    /// Validated image height (`n_neurons * scale`), within the PNG limits.
+    height: usize,
     /// Pre-normalization peak of the frame (max bin value).
     peak: f32,
     /// Unscaled `[N, T]` grayscale pixels.
@@ -174,15 +183,19 @@ pub struct Raster {
 
 impl Raster {
     /// Image width in pixels: `n_steps * scale`.
-    /// Returns `Invalid` if the scaled dimension exceeds the PNG limits.
-    pub fn width(&self) -> Result<usize, SpikeIOError> {
-        scaled_dimension(self.n_steps, self.scale)
+    ///
+    /// Infallible: the geometry is validated (against the PNG dimension
+    /// limits) when the raster is rendered.
+    pub fn width(&self) -> usize {
+        self.width
     }
 
     /// Image height in pixels: `n_neurons * scale`.
-    /// Returns `Invalid` if the scaled dimension exceeds the PNG limits.
-    pub fn height(&self) -> Result<usize, SpikeIOError> {
-        scaled_dimension(self.n_neurons, self.scale)
+    ///
+    /// Infallible: the geometry is validated (against the PNG dimension
+    /// limits) when the raster is rendered.
+    pub fn height(&self) -> usize {
+        self.height
     }
 
     /// Nearest-neighbor upscale factor.
@@ -206,10 +219,10 @@ impl Raster {
     }
 
     /// Nearest-neighbor scaled grayscale frame, row-major
-    /// `[height, width]`. Returns `Invalid` for oversized buffers or failed allocation.
+    /// `[height, width]`. Returns `Invalid` when the allocation fails.
     pub fn scaled_pixels(&self) -> Result<Vec<u8>, SpikeIOError> {
-        let len = pixel_len(self.width()?, self.height()?)?;
-        let mut out = buffer(len)?;
+        // Geometry was validated at render time; only allocation can fail.
+        let mut out = buffer(pixel_len(self.width, self.height)?)?;
         for n in 0..self.n_neurons {
             for _ in 0..self.scale {
                 for t in 0..self.n_steps {
@@ -257,7 +270,8 @@ pub fn render_raster(
     n_neurons: usize,
     scale: usize,
 ) -> Result<Raster, SpikeIOError> {
-    raster_len(n_steps, n_neurons, scale)?;
+    // Reject oversized geometry (and bad scale) before allocating anything.
+    raster_geometry(n_steps, n_neurons, scale)?;
     // Substitute zero amplitudes with unit amplitude before accumulating.
     let grid = match events.amp() {
         Some(amp) => {
@@ -281,7 +295,7 @@ pub fn render_raster(
 /// [`render_raster`].
 pub fn render_dense(grid: &DenseGrid, scale: usize) -> Result<Raster, SpikeIOError> {
     let (n_steps, n_neurons) = (grid.n_steps(), grid.n_neurons());
-    let len = raster_len(n_steps, n_neurons, scale)?;
+    let (len, width, height) = raster_geometry(n_steps, n_neurons, scale)?;
 
     // Frame is [N, T]: rows = neurons, columns = time steps.
     let mut peak = f32::NEG_INFINITY;
@@ -314,6 +328,8 @@ pub fn render_dense(grid: &DenseGrid, scale: usize) -> Result<Raster, SpikeIOErr
         n_steps,
         n_neurons,
         scale,
+        width,
+        height,
         peak,
         pixels,
     })
@@ -346,9 +362,13 @@ fn round_half_even(value: f32) -> f32 {
 /// behavior of letting `OSError` propagate). Output is 8-bit RGB, identical
 /// in mode to the PNGs written by the Python renderer.
 pub fn write_png<P: AsRef<Path>>(raster: &Raster, path: P) -> Result<(), SpikeIOError> {
-    let width = u32::try_from(raster.width()?)
+    // Encode the bytes before touching the destination so a failure does
+    // not leave a truncated PNG behind. The u32 casts re-check the PNG
+    // dimension limit at the encoder boundary (construction already
+    // validates it; this guards direct struct misuse).
+    let width = u32::try_from(raster.width())
         .map_err(|_| SpikeIOError::Invalid("PNG width exceeds u32".to_string()))?;
-    let height = u32::try_from(raster.height()?)
+    let height = u32::try_from(raster.height())
         .map_err(|_| SpikeIOError::Invalid("PNG height exceeds u32".to_string()))?;
     let rgb = raster.rgb_bytes()?;
     let path = path.as_ref();
@@ -402,16 +422,19 @@ mod tests {
     #[test]
     fn invalid_raster_sizes_fail_before_png_creation() {
         let path = std::env::temp_dir().join("spike-viz-missing-parent/invalid.png");
-        for (n_steps, n_neurons, scale) in [
-            (2, 1, usize::MAX),
-            (1, 2, usize::MAX),
-            (i32::MAX as usize, i32::MAX as usize, 1),
+        for (width, height) in [
+            (usize::MAX, 1),                        // width exceeds the PNG u32 limit
+            (1, usize::MAX),                        // height exceeds the PNG u32 limit
+            (i32::MAX as usize, i32::MAX as usize), // RGB buffer exceeds addressable size
         ] {
-            // Exercise the buffer and PNG boundaries independently of render_dense.
+            // Exercise the buffer and PNG boundaries independently of
+            // render_dense (which validates geometry at construction).
             let raster = Raster {
-                n_steps,
-                n_neurons,
-                scale,
+                n_steps: width,
+                n_neurons: height,
+                scale: 1,
+                width,
+                height,
                 peak: 0.0,
                 pixels: vec![],
             };

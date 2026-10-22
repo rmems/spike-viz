@@ -28,10 +28,13 @@ REPO = Path(__file__).resolve().parents[1]
 SCALE = 8
 INTENSITY_TOLERANCE = 1  # semantic parity: +/- 1 intensity level
 
-# tiny_synthetic (schema smoke), shared_sine_v1 (real rate export, the
-# checked-in rate fixture), shared_sine_gain_0_v1 (real silent export).
+# tiny_synthetic (schema smoke), tiny_fractional_amp (fractional f32 amps +
+# zero-amp substitution, locks the exact f64 widening), shared_sine_v1 (real
+# rate export, the checked-in rate fixture), shared_sine_gain_0_v1 (real
+# silent export).
 CASES = [
     "rate/tiny_synthetic",
+    "rate/tiny_fractional_amp",
     "rate/shared_sine_v1",
     "rate/shared_sine_gain_0_v1",
 ]

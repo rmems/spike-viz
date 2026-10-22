@@ -16,7 +16,7 @@ fn make_events(t: &[i64], n: &[i64], amp: Option<&[f32]>) -> SpikeEvents {
 fn sparse_placement_marks_expected_pixels() {
     let events = make_events(&[0, 2, 4], &[1, 0, 2], None);
     let raster = render_raster(&events, 5, 3, 1).unwrap();
-    assert_eq!((raster.width().unwrap(), raster.height().unwrap()), (5, 3));
+    assert_eq!((raster.width(), raster.height()), (5, 3));
 
     let out = temp_dir("placement").join("raster.png");
     write_png(&raster, &out).unwrap();
@@ -39,7 +39,7 @@ fn sparse_placement_marks_expected_pixels() {
 fn dimensions_scale_with_nearest_neighbor() {
     let events = make_events(&[0], &[0], None);
     let raster = render_raster(&events, 2, 2, 3).unwrap();
-    assert_eq!((raster.width().unwrap(), raster.height().unwrap()), (6, 6));
+    assert_eq!((raster.width(), raster.height()), (6, 6));
     // Unscaled pixels stay [N, T].
     assert_eq!(raster.pixels().len(), 4);
     let scaled = raster.scaled_pixels().unwrap();
@@ -56,7 +56,7 @@ fn dimensions_scale_with_nearest_neighbor() {
 fn empty_events_render_all_black() {
     let events = make_events(&[], &[], None);
     let raster = render_raster(&events, 3, 2, 1).unwrap();
-    assert_eq!((raster.width().unwrap(), raster.height().unwrap()), (3, 2));
+    assert_eq!((raster.width(), raster.height()), (3, 2));
     assert!(raster.pixels().iter().all(|value| *value == 0));
 
     let out = temp_dir("empty-raster").join("raster.png");
@@ -76,7 +76,7 @@ fn silent_real_export_renders_all_black() {
         1,
     )
     .unwrap();
-    assert_eq!((raster.width().unwrap(), raster.height().unwrap()), (64, 8));
+    assert_eq!((raster.width(), raster.height()), (64, 8));
     assert!(raster.pixels().iter().all(|value| *value == 0));
     assert_eq!(raster.peak(), 0.0);
 }
@@ -241,10 +241,7 @@ fn rate_fixture_renders_without_inventing_or_dropping_events() {
         8,
     )
     .unwrap();
-    assert_eq!(
-        (raster.width().unwrap(), raster.height().unwrap()),
-        (512, 64)
-    );
+    assert_eq!((raster.width(), raster.height()), (512, 64));
 
     // Every event bin must be lit (no dropped spikes) and every lit bin
     // must correspond to at least one real event (no invented spikes).
