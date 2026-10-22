@@ -141,7 +141,11 @@ def test_caption_refuses_symlink_to_metadata(meta_path: Path, tmp_path: Path) ->
     try:
         link.symlink_to(meta_path)
     except OSError as exc:
-        # e.g. Windows without Developer Mode / elevated privileges.
+        # Windows without Developer Mode / elevated privileges cannot create
+        # symlinks (WinError 1314, ERROR_PRIVILEGE_NOT_HELD). Any other
+        # failure is a real setup error and must surface, not silently skip.
+        if getattr(exc, "winerror", None) != 1314:
+            raise
         pytest.skip(f"host cannot create symlinks: {exc}")
     with pytest.raises(SpikeIOError, match="metadata file"):
         spike_viz.provenance_caption(meta_path, out_path=link)
