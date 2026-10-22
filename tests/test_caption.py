@@ -136,6 +136,7 @@ def test_caption_refuses_sidecar_that_resolves_to_metadata(meta_path: Path) -> N
 
 
 def test_caption_refuses_symlink_to_metadata(meta_path: Path, tmp_path: Path) -> None:
+    """A symlinked sidecar must still be refused and leave metadata unchanged."""
     original = meta_path.read_bytes()
     link = tmp_path / "meta-link.json"
     try:
