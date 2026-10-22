@@ -1,0 +1,12 @@
+{
+  "schema_version": "1.0",
+  "encoder": "rate",
+  "dt_seconds": 0.001,
+  "seed": 0,
+  "n_neurons": 2,
+  "n_steps": 4,
+  "axon_encoder_git_sha": null,
+  "synthetic": true,
+  "stimulus_notes": "No continuous stimulus; schema layout smoke only.",
+  "notes": "Synthetic fixture with fractional float32 amplitudes and a zero-amplitude (polarity-false) event; locks the exact f64 widening used by the Rust/Python parity report."
+}

@@ -1,0 +1,16 @@
+# Rust-first core workspace for spike-viz.
+#
+# Migration state: the Python package in `src/spike_viz/` remains the
+# operational reference implementation until the documented parity gates
+# pass; see docs/rust-migration.md. The bridge stays export-first
+# (meta.json + spikes.npz on disk), with no in-process bindings.
+
+[workspace]
+resolver = "2"
+members = ["rust/spike-viz-core"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+repository = "https://github.com/rmems/spike-viz"
