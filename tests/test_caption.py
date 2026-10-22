@@ -138,7 +138,11 @@ def test_caption_refuses_sidecar_that_resolves_to_metadata(meta_path: Path) -> N
 def test_caption_refuses_symlink_to_metadata(meta_path: Path, tmp_path: Path) -> None:
     original = meta_path.read_bytes()
     link = tmp_path / "meta-link.json"
-    link.symlink_to(meta_path)
+    try:
+        link.symlink_to(meta_path)
+    except OSError as exc:
+        # e.g. Windows without Developer Mode / elevated privileges.
+        pytest.skip(f"host cannot create symlinks: {exc}")
     with pytest.raises(SpikeIOError, match="metadata file"):
         spike_viz.provenance_caption(meta_path, out_path=link)
     assert meta_path.read_bytes() == original
