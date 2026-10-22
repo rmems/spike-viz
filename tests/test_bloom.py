@@ -191,6 +191,7 @@ def _bloom_heat_on_devices(grid: np.ndarray, **params) -> tuple[np.ndarray, np.n
 
 
 def _assert_heat_parity(cpu_heat: np.ndarray, cuda_heat: np.ndarray) -> None:
+    """Assert CPU/CUDA heat frames match within the documented parity tolerance."""
     torch.testing.assert_close(
         torch.from_numpy(cuda_heat),
         torch.from_numpy(cpu_heat),
@@ -212,6 +213,7 @@ def _assert_heat_parity(cpu_heat: np.ndarray, cuda_heat: np.ndarray) -> None:
     ],
 )
 def test_bloom_cuda_heat_matches_cpu(sigma: float, intensity: float, gamma: float) -> None:
+    """Tone-mapped heat must match across devices for identical parameters."""
     grid = _parity_grid()
 
     cpu_heat, cuda_heat = _bloom_heat_on_devices(
@@ -223,6 +225,7 @@ def test_bloom_cuda_heat_matches_cpu(sigma: float, intensity: float, gamma: floa
 
 @pytest.mark.cuda
 def test_bloom_cuda_uint8_matches_cpu() -> None:
+    """Final uint8 RGB output must match across devices within 2 LSB."""
     grid = _parity_grid()
     params: dict = {"sigma": 1.5, "intensity": 2.0, "gamma": 1.8}
 
@@ -241,6 +244,7 @@ def test_bloom_cuda_uint8_matches_cpu() -> None:
 
 @pytest.mark.cuda
 def test_bloom_cuda_empty_grid_is_flat_and_identical() -> None:
+    """Empty grid must render as an all-zero frame identically on both devices."""
     grid = np.zeros((13, 7), dtype=np.float32)
 
     cpu = bloom_raster(grid, sigma=1.5)
@@ -257,6 +261,7 @@ def test_bloom_cuda_empty_grid_is_flat_and_identical() -> None:
 
 @pytest.mark.cuda
 def test_bloom_cuda_sparse_fixture_matches_cpu() -> None:
+    """Golden sparse fixture must produce matching heat on both devices."""
     case = load_axon_export("fixtures/axon-encoder/rate/tiny_synthetic")
     grid = sparse_to_dense(
         case.events, int(case.meta["n_steps"]), int(case.meta["n_neurons"])
