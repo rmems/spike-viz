@@ -104,8 +104,8 @@ impl SemanticReport {
             n_neurons: case.meta.n_neurons,
             n_events: case.events.len(),
             scale: raster.scale(),
-            width: raster.width(),
-            height: raster.height(),
+            width: raster.width()?,
+            height: raster.height()?,
             peak: raster.peak(),
             events: case
                 .events

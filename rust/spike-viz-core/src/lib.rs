@@ -32,7 +32,7 @@
 //!     1,
 //! )
 //! .unwrap();
-//! assert_eq!((raster.width(), raster.height()), (8, 4));
+//! assert_eq!((raster.width().unwrap(), raster.height().unwrap()), (8, 4));
 //!
 //! // write_png(&raster, "raster.png") — parent directory must exist.
 //! # write_png(&raster, std::env::temp_dir().join("spike_viz_core_doctest.png")).unwrap();

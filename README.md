@@ -22,6 +22,7 @@ export-first). Details: [docs/rust-migration.md](docs/rust-migration.md).
 
 ```bash
 cargo test                                   # Rust core tests (CPU only)
+mkdir -p out
 cargo run --bin spike-viz -- render fixtures/axon-encoder/rate/shared_sine_v1 \
     --out out/rate.png --scale 8 --report out/rate.json
 pytest tests/test_rust_parity.py -q          # Rust/Python semantic parity gate

@@ -5,6 +5,60 @@ use std::path::Path;
 use crate::error::SpikeIOError;
 use crate::events::SpikeEvents;
 
+fn checked_size(a: usize, b: usize, name: &str) -> Result<usize, SpikeIOError> {
+    a.checked_mul(b)
+        .filter(|size| *size <= isize::MAX as usize)
+        .ok_or_else(|| SpikeIOError::Invalid(format!("{name} is too large")))
+}
+
+fn grid_len(n_steps: usize, n_neurons: usize) -> Result<usize, SpikeIOError> {
+    if n_steps < 1 || n_neurons < 1 {
+        return Err(SpikeIOError::Invalid(
+            "n_steps and n_neurons must be >= 1".to_string(),
+        ));
+    }
+    let len = checked_size(n_steps, n_neurons, "dense grid")?;
+    checked_size(len, std::mem::size_of::<f32>(), "dense grid byte size")?;
+    Ok(len)
+}
+
+fn scaled_dimension(size: usize, scale: usize) -> Result<usize, SpikeIOError> {
+    let dimension = checked_size(size, scale, "scaled raster dimension")?;
+    // PNG dimensions must be in 1..=2^31-1 (PNG specification, section 11.2.2).
+    if dimension == 0 || dimension > i32::MAX as usize {
+        return Err(SpikeIOError::Invalid(
+            "PNG dimensions must be in 1..=2^31-1".to_string(),
+        ));
+    }
+    Ok(dimension)
+}
+
+fn pixel_len(width: usize, height: usize) -> Result<usize, SpikeIOError> {
+    let len = checked_size(width, height, "scaled pixel count")?;
+    checked_size(len, 3, "RGB byte size")?;
+    Ok(len)
+}
+
+fn raster_len(n_steps: usize, n_neurons: usize, scale: usize) -> Result<usize, SpikeIOError> {
+    let len = grid_len(n_steps, n_neurons)?;
+    if scale < 1 {
+        return Err(SpikeIOError::Invalid(
+            "scale must be an integer >= 1".to_string(),
+        ));
+    }
+    let width = scaled_dimension(n_steps, scale)?;
+    let height = scaled_dimension(n_neurons, scale)?;
+    pixel_len(width, height)?;
+    Ok(len)
+}
+
+fn buffer<T>(len: usize) -> Result<Vec<T>, SpikeIOError> {
+    let mut data = Vec::new();
+    data.try_reserve_exact(len)
+        .map_err(|e| SpikeIOError::Invalid(format!("cannot allocate rendering buffer: {e}")))?;
+    Ok(data)
+}
+
 /// Dense `[T, N]` float32 grid (time-major), the raster source of truth.
 ///
 /// Mirrors the Python `sparse_to_dense` output. Data is row-major with
@@ -22,15 +76,11 @@ impl DenseGrid {
     /// Fails loud when the geometry is not at least 1x1 or the data length
     /// does not match `n_steps * n_neurons`.
     pub fn new(n_steps: usize, n_neurons: usize, data: Vec<f32>) -> Result<Self, SpikeIOError> {
-        if n_steps < 1 || n_neurons < 1 {
-            return Err(SpikeIOError::Invalid(
-                "n_steps and n_neurons must be >= 1".to_string(),
-            ));
-        }
-        if data.len() != n_steps * n_neurons {
+        let len = grid_len(n_steps, n_neurons)?;
+        if data.len() != len {
             return Err(SpikeIOError::Invalid(format!(
                 "dense grid must hold n_steps * n_neurons = {} values, got {}",
-                n_steps * n_neurons,
+                len,
                 data.len()
             )));
         }
@@ -70,12 +120,9 @@ pub fn sparse_to_dense(
     n_steps: usize,
     n_neurons: usize,
 ) -> Result<DenseGrid, SpikeIOError> {
-    if n_steps < 1 || n_neurons < 1 {
-        return Err(SpikeIOError::Invalid(
-            "n_steps and n_neurons must be >= 1".to_string(),
-        ));
-    }
-    let mut data = vec![0.0f32; n_steps * n_neurons];
+    let len = grid_len(n_steps, n_neurons)?;
+    let mut data = buffer(len)?;
+    data.resize(len, 0.0f32);
     if events.is_empty() {
         return Ok(DenseGrid {
             n_steps,
@@ -127,13 +174,15 @@ pub struct Raster {
 
 impl Raster {
     /// Image width in pixels: `n_steps * scale`.
-    pub fn width(&self) -> usize {
-        self.n_steps * self.scale
+    /// Returns `Invalid` if the scaled dimension exceeds the PNG limits.
+    pub fn width(&self) -> Result<usize, SpikeIOError> {
+        scaled_dimension(self.n_steps, self.scale)
     }
 
     /// Image height in pixels: `n_neurons * scale`.
-    pub fn height(&self) -> usize {
-        self.n_neurons * self.scale
+    /// Returns `Invalid` if the scaled dimension exceeds the PNG limits.
+    pub fn height(&self) -> Result<usize, SpikeIOError> {
+        scaled_dimension(self.n_neurons, self.scale)
     }
 
     /// Nearest-neighbor upscale factor.
@@ -157,10 +206,10 @@ impl Raster {
     }
 
     /// Nearest-neighbor scaled grayscale frame, row-major
-    /// `[height, width]`.
-    pub fn scaled_pixels(&self) -> Vec<u8> {
-        let (width, height) = (self.width(), self.height());
-        let mut out = Vec::with_capacity(width * height);
+    /// `[height, width]`. Returns `Invalid` for oversized buffers or failed allocation.
+    pub fn scaled_pixels(&self) -> Result<Vec<u8>, SpikeIOError> {
+        let len = pixel_len(self.width()?, self.height()?)?;
+        let mut out = buffer(len)?;
         for n in 0..self.n_neurons {
             for _ in 0..self.scale {
                 for t in 0..self.n_steps {
@@ -169,20 +218,20 @@ impl Raster {
                 }
             }
         }
-        out
+        Ok(out)
     }
 
     /// Scaled RGB8 image bytes (grayscale replicated to three channels).
     ///
     /// Matches the PNG mode written by the Python renderer
     /// (`Image.fromarray(..., mode="L").convert("RGB")`).
-    pub fn rgb_bytes(&self) -> Vec<u8> {
-        let gray = self.scaled_pixels();
-        let mut out = Vec::with_capacity(gray.len() * 3);
+    pub fn rgb_bytes(&self) -> Result<Vec<u8>, SpikeIOError> {
+        let gray = self.scaled_pixels()?;
+        let mut out = buffer(checked_size(gray.len(), 3, "RGB byte size")?)?;
         for value in gray {
             out.extend([value, value, value]);
         }
-        out
+        Ok(out)
     }
 }
 
@@ -208,6 +257,7 @@ pub fn render_raster(
     n_neurons: usize,
     scale: usize,
 ) -> Result<Raster, SpikeIOError> {
+    raster_len(n_steps, n_neurons, scale)?;
     // Substitute zero amplitudes with unit amplitude before accumulating.
     let grid = match events.amp() {
         Some(amp) => {
@@ -230,12 +280,8 @@ pub fn render_raster(
 /// Render a dense `[T, N]` grid with the same intensity rules as
 /// [`render_raster`].
 pub fn render_dense(grid: &DenseGrid, scale: usize) -> Result<Raster, SpikeIOError> {
-    if scale < 1 {
-        return Err(SpikeIOError::Invalid(
-            "scale must be an integer >= 1".to_string(),
-        ));
-    }
     let (n_steps, n_neurons) = (grid.n_steps(), grid.n_neurons());
+    let len = raster_len(n_steps, n_neurons, scale)?;
 
     // Frame is [N, T]: rows = neurons, columns = time steps.
     let mut peak = f32::NEG_INFINITY;
@@ -251,7 +297,7 @@ pub fn render_dense(grid: &DenseGrid, scale: usize) -> Result<Raster, SpikeIOErr
         }
     }
 
-    let mut pixels = Vec::with_capacity(n_steps * n_neurons);
+    let mut pixels = buffer(len)?;
     for n in 0..n_neurons {
         for t in 0..n_steps {
             let value = grid.get(t, n);
@@ -300,21 +346,22 @@ fn round_half_even(value: f32) -> f32 {
 /// behavior of letting `OSError` propagate). Output is 8-bit RGB, identical
 /// in mode to the PNGs written by the Python renderer.
 pub fn write_png<P: AsRef<Path>>(raster: &Raster, path: P) -> Result<(), SpikeIOError> {
+    let width = u32::try_from(raster.width()?)
+        .map_err(|_| SpikeIOError::Invalid("PNG width exceeds u32".to_string()))?;
+    let height = u32::try_from(raster.height()?)
+        .map_err(|_| SpikeIOError::Invalid("PNG height exceeds u32".to_string()))?;
+    let rgb = raster.rgb_bytes()?;
     let path = path.as_ref();
     let file = File::create(path)
         .map_err(|e| SpikeIOError::io(format!("failed to write PNG at {}: {e}", path.display())))?;
-    let mut encoder = png::Encoder::new(
-        BufWriter::new(file),
-        raster.width() as u32,
-        raster.height() as u32,
-    );
+    let mut encoder = png::Encoder::new(BufWriter::new(file), width, height);
     encoder.set_color(png::ColorType::Rgb);
     encoder.set_depth(png::BitDepth::Eight);
     let mut writer = encoder
         .write_header()
         .map_err(|e| SpikeIOError::io(format!("failed to encode PNG header: {e}")))?;
     writer
-        .write_image_data(&raster.rgb_bytes())
+        .write_image_data(&rgb)
         .map_err(|e| SpikeIOError::io(format!("failed to encode PNG pixels: {e}")))?;
     writer.finish().map_err(|e| {
         SpikeIOError::io(format!("failed to finish PNG at {}: {e}", path.display()))
@@ -350,5 +397,33 @@ mod tests {
         assert!(DenseGrid::new(2, 0, vec![]).is_err());
         assert!(DenseGrid::new(2, 2, vec![0.0; 3]).is_err());
         assert!(DenseGrid::new(2, 2, vec![0.0; 4]).is_ok());
+    }
+
+    #[test]
+    fn invalid_raster_sizes_fail_before_png_creation() {
+        let path = std::env::temp_dir().join("spike-viz-missing-parent/invalid.png");
+        for (n_steps, n_neurons, scale) in [
+            (2, 1, usize::MAX),
+            (1, 2, usize::MAX),
+            (i32::MAX as usize, i32::MAX as usize, 1),
+        ] {
+            // Exercise the buffer and PNG boundaries independently of render_dense.
+            let raster = Raster {
+                n_steps,
+                n_neurons,
+                scale,
+                peak: 0.0,
+                pixels: vec![],
+            };
+            assert!(matches!(
+                raster.scaled_pixels(),
+                Err(SpikeIOError::Invalid(_))
+            ));
+            assert!(matches!(raster.rgb_bytes(), Err(SpikeIOError::Invalid(_))));
+            assert!(matches!(
+                write_png(&raster, &path),
+                Err(SpikeIOError::Invalid(_))
+            ));
+        }
     }
 }

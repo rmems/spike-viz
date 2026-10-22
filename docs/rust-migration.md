@@ -83,6 +83,7 @@ compared within ±1 intensity level.
 The parity test runs the CLI end-to-end:
 
 ```bash
+mkdir -p out
 cargo run --bin spike-viz -- render fixtures/axon-encoder/rate/shared_sine_v1 \
     --out out/rate.png --scale 8 --report out/rate.json
 ```
