@@ -248,9 +248,11 @@ def test_bloom_cuda_empty_grid_is_flat_and_identical() -> None:
 
     # No activity: blur and tone-map of zeros are exactly zero on both
     # devices, so the frame must be the flat background color on each and
-    # must not invent spikes.
+    # must not invent spikes. Inferno maps zero heat to black, so a shared
+    # CPU/CUDA regression that lifts the whole frame must not pass either.
     np.testing.assert_array_equal(cpu, cuda)
     assert (cpu == cpu[0, 0]).all()
+    np.testing.assert_array_equal(cpu, np.zeros_like(cpu))
 
 
 @pytest.mark.cuda
