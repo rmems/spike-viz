@@ -26,7 +26,8 @@ def provenance_caption(meta_path: PathLike, *, out_path: PathLike | None = None)
     If ``out_path`` is supplied, expand ``~`` and resolve ``..`` to one
     absolute path before metadata is read. The parent directory must already
     exist; otherwise :class:`OSError` is raised and nothing is written. The
-    sidecar is UTF-8 plain text with one trailing newline. Return the caption
+    sidecar is UTF-8 plain text with one trailing newline, written with
+    ``LF`` line endings on every platform. Return the caption
     without a trailing newline. When the parent exists, invalid metadata
     raises :class:`SpikeIOError` before any sidecar is written. If
     ``out_path`` resolves to the metadata file, including through a symlink
@@ -55,7 +56,9 @@ def provenance_caption(meta_path: PathLike, *, out_path: PathLike | None = None)
         if synthetic:
             caption += " | synthetic=true"
     if destination is not None:
-        destination.write_text(caption + "\n", encoding="utf-8")
+        # newline="\n" keeps the sidecar byte-identical across platforms;
+        # the default text-mode translation would emit CRLF on Windows.
+        destination.write_text(caption + "\n", encoding="utf-8", newline="\n")
     return caption
 
 
