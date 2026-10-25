@@ -121,78 +121,98 @@ fn run(args: &[String]) -> Result<(), CliError> {
     Ok(())
 }
 
+/// Parsed flag values before the cross-field validations run.
+struct FlagValues {
+    case_dir: Option<PathBuf>,
+    out: Option<PathBuf>,
+    report: Option<PathBuf>,
+    scale: usize,
+}
+
 fn parse_args(args: &[String]) -> Result<RenderArgs, CliError> {
     let mut iter = args.iter();
-    let subcommand = iter.next().ok_or_else(|| {
-        CliError::Usage("missing subcommand; expected `render <CASE_DIR>`".to_string())
-    })?;
+    let subcommand = iter
+        .next()
+        .ok_or_else(|| usage("missing subcommand; expected `render <CASE_DIR>`"))?;
     if subcommand != "render" {
-        return Err(CliError::Usage(format!(
+        return Err(usage(format!(
             "unknown subcommand {subcommand:?}; expected `render <CASE_DIR>`"
         )));
     }
+    finalize(parse_flags(&mut iter)?)
+}
 
-    let mut case_dir: Option<PathBuf> = None;
-    let mut out: Option<PathBuf> = None;
-    let mut report: Option<PathBuf> = None;
-    let mut scale: usize = 1;
+/// Validate the parsed flags and assemble the render arguments.
+fn finalize(flags: FlagValues) -> Result<RenderArgs, CliError> {
+    let case_dir = flags
+        .case_dir
+        .ok_or_else(|| usage("missing <CASE_DIR> argument"))?;
+    if flags.out.is_none() && flags.report.is_none() {
+        return Err(usage(
+            "nothing to do: pass --out <PNG> and/or --report <JSON>",
+        ));
+    }
+    if let (Some(out), Some(report)) = (&flags.out, &flags.report) {
+        if same_target(out, report) {
+            return Err(usage(
+                "--out and --report must be different paths: writing the report \
+                 would truncate the just-written PNG",
+            ));
+        }
+    }
+    Ok(RenderArgs {
+        case_dir,
+        out: flags.out,
+        report: flags.report,
+        scale: flags.scale,
+    })
+}
 
+/// Consume the flags after the `render` subcommand.
+fn parse_flags<'a>(mut iter: impl Iterator<Item = &'a String>) -> Result<FlagValues, CliError> {
+    let mut flags = FlagValues {
+        case_dir: None,
+        out: None,
+        report: None,
+        scale: 1,
+    };
     while let Some(arg) = iter.next() {
         let (flag, inline_value) = match arg.split_once('=') {
             Some((flag, value)) => (flag.to_string(), Some(value.to_string())),
             None => (arg.clone(), None),
         };
         let mut value = |flag: &str| -> Result<String, CliError> {
-            if let Some(value) = inline_value.clone() {
-                return Ok(value);
-            }
-            iter.next()
-                .cloned()
-                .ok_or_else(|| CliError::Usage(format!("missing value for {flag}")))
+            inline_value
+                .clone()
+                .or_else(|| iter.next().cloned())
+                .ok_or_else(|| usage(format!("missing value for {flag}")))
         };
         match flag.as_str() {
-            "--out" => out = Some(PathBuf::from(value("--out")?)),
-            "--report" => report = Some(PathBuf::from(value("--report")?)),
+            "--out" => flags.out = Some(PathBuf::from(value("--out")?)),
+            "--report" => flags.report = Some(PathBuf::from(value("--report")?)),
             "--scale" => {
                 let raw = value("--scale")?;
-                scale = raw.parse().map_err(|_| {
-                    CliError::Usage(format!("--scale must be an integer >= 1, got {raw:?}"))
-                })?;
+                flags.scale = raw
+                    .parse()
+                    .map_err(|_| usage(format!("--scale must be an integer >= 1, got {raw:?}")))?;
             }
             _ if flag.starts_with("--") => {
-                return Err(CliError::Usage(format!("unknown option {flag:?}")));
+                return Err(usage(format!("unknown option {flag:?}")));
             }
             _ => {
-                if case_dir.is_some() {
-                    return Err(CliError::Usage(format!("unexpected argument {arg:?}")));
+                if flags.case_dir.is_some() {
+                    return Err(usage(format!("unexpected argument {arg:?}")));
                 }
-                case_dir = Some(PathBuf::from(arg));
+                flags.case_dir = Some(PathBuf::from(arg));
             }
         }
     }
+    Ok(flags)
+}
 
-    let case_dir =
-        case_dir.ok_or_else(|| CliError::Usage("missing <CASE_DIR> argument".to_string()))?;
-    if out.is_none() && report.is_none() {
-        return Err(CliError::Usage(
-            "nothing to do: pass --out <PNG> and/or --report <JSON>".to_string(),
-        ));
-    }
-    if let (Some(out), Some(report)) = (&out, &report) {
-        if same_target(out, report) {
-            return Err(CliError::Usage(
-                "--out and --report must be different paths: writing the report \
-                 would truncate the just-written PNG"
-                    .to_string(),
-            ));
-        }
-    }
-    Ok(RenderArgs {
-        case_dir,
-        out,
-        report,
-        scale,
-    })
+/// Build a usage error (exit code 2).
+fn usage(message: impl Into<String>) -> CliError {
+    CliError::Usage(message.into())
 }
 
 /// True when both paths point at the same file.
