@@ -25,9 +25,13 @@ encoder, or silent synthetic data when load fails.
 
 ## Stack
 
-- Language: Python 3.10+ (`src/spike_viz/` layout)
+- Language: Python 3.10+ (`src/spike_viz/` layout) — the operational reference
+- Rust core: workspace root `Cargo.toml` → `rust/spike-viz-core` (library +
+  `spike-viz` CLI); run `cargo test` from the repo root; CPU-only, no CUDA,
+  no crates.io publishing. See [docs/rust-migration.md](docs/rust-migration.md)
 - Core deps: `numpy`, `torch`, `pillow` — **CUDA optional** (CPU torch is fine)
 - Tests: `pytest` on CPU (`pip install -e ".[dev]"`); CUDA tests must skip cleanly when no GPU
+- Rust/Python parity gate: `tests/test_rust_parity.py` (skips cleanly without `cargo`)
 - Export layout: `docs/axon-encoder-export.md` + `fixtures/axon-encoder/`
 - Interactive Makie-style UI is **out of scope** (other viz repos)
 

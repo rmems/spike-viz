@@ -1,0 +1,25 @@
+[package]
+name = "spike-viz-core"
+description = "Rust-first spike-viz core: load axon-encoder spike exports and render truth-preserving CPU rasters"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+# The charter rules out publish automation; this crate is not for crates.io.
+publish = false
+
+[dependencies]
+npyz = { version = "0.8", features = ["npz"] }
+png = "0.17"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+
+[lib]
+name = "spike_viz_core"
+path = "src/lib.rs"
+
+# Thin parity-bridge CLI; the library is the reusable core.
+[[bin]]
+name = "spike-viz"
+path = "src/bin/spike-viz.rs"

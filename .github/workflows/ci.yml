@@ -37,3 +37,12 @@ jobs:
         run: python -c "from spike_viz import load_axon_export; print(load_axon_export('fixtures/axon-encoder/rate/tiny_synthetic').meta['encoder'])"
       - name: Run pytest (CPU; CUDA tests skip without GPU)
         run: pytest -q -rs
+
+  rust:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Rust core tests (CPU only; no CUDA required)
+        run: cargo test --workspace
