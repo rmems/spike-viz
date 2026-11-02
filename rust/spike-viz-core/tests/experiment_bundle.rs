@@ -713,6 +713,12 @@ fn malformed_known_fields_fail_loud_even_in_a_newer_minor() {
         ("/producers/bad~1id", |m| {
             m["producers"]["bad/id"] = m["producers"]["hw"].clone()
         }),
+        ("/channels/Spikes", |m| {
+            m["channels"]["Spikes"] = m["channels"]["spikes"].clone()
+        }),
+        ("/producers/HW", |m| {
+            m["producers"]["HW"] = m["producers"]["hw"].clone()
+        }),
         ("undeclared producer", |m| {
             m["channels"]["spikes"]["producer"] = json!("ghost")
         }),
@@ -881,7 +887,9 @@ fn builder_rejects_invalid_channels() {
         ),
         "already present",
     );
-    for bad_id in ["", "../x", "a/b", "a.b", "_x"] {
+    // Upper case is refused: ids name payload files, and `Spikes` would
+    // overwrite `spikes` on a case-insensitive filesystem.
+    for bad_id in ["", "../x", "a/b", "a.b", "_x", "Spikes", "SPIKES"] {
         assert_invalid(
             builder.add_document(bad_id, spec(ChannelKind::Topology, "neuro"), json!({})),
             "invalid id",

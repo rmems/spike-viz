@@ -102,8 +102,11 @@ writer sorts keys):
 | `channels` | object: id → channel | **yes** | May be empty; an unlisted channel is absent |
 | `extensions` | object: namespace → any | no | Opaque, namespaced extra data; preserved, never interpreted |
 
-Producer and channel ids are 1 to 64 ASCII letters, digits, `_` or `-`,
-starting with a letter or digit.
+Producer and channel ids are 1 to 64 **lower-case** ASCII letters, digits,
+`_` or `-`, starting with a letter or digit. Ids name payload files, and
+upper case would let `Spikes` and `spikes` collide on case-insensitive
+filesystems (APFS, NTFS), where one channel would silently read the other's
+data.
 
 ## Required provenance
 

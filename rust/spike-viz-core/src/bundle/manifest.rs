@@ -630,21 +630,26 @@ fn parse_columns(
     Ok(Ok(columns))
 }
 
-/// Channel / producer ids: 1-64 ASCII alphanumerics, `_` or `-`, starting
-/// with an alphanumeric. Ids double as payload file names.
+/// Channel / producer ids: 1-64 lower-case ASCII letters, digits, `_` or
+/// `-`, starting with a letter or digit.
+///
+/// Ids double as payload file names, so upper case is not allowed: on
+/// case-insensitive filesystems (APFS, NTFS) `Spikes` and `spikes` would
+/// name one file and one channel would silently read the other's data.
 pub(crate) fn check_id(id: &str) -> Result<(), String> {
+    let allowed = |byte: u8| byte.is_ascii_lowercase() || byte.is_ascii_digit();
     let valid = !id.is_empty()
         && id.len() <= 64
-        && id.as_bytes()[0].is_ascii_alphanumeric()
+        && allowed(id.as_bytes()[0])
         && id
             .bytes()
-            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_' || byte == b'-');
+            .all(|byte| allowed(byte) || byte == b'_' || byte == b'-');
     if valid {
         Ok(())
     } else {
         Err(format!(
-            "invalid id {id:?}: use 1-64 ASCII letters, digits, '_' or '-', starting with a \
-             letter or digit"
+            "invalid id {id:?}: use 1-64 lower-case ASCII letters, digits, '_' or '-', starting \
+             with a letter or digit"
         ))
     }
 }
@@ -939,7 +944,18 @@ mod tests {
         for good in ["spikes", "v_mem", "a-1", "0"] {
             assert!(check_id(good).is_ok(), "{good:?}");
         }
-        for bad in ["", "..", "a/b", "a.b", "_x", "-x", "é", &"x".repeat(65)] {
+        for bad in [
+            "",
+            "..",
+            "a/b",
+            "a.b",
+            "_x",
+            "-x",
+            "é",
+            "Spikes",
+            "sPikes",
+            &"x".repeat(65),
+        ] {
             assert!(check_id(bad).is_err(), "{bad:?}");
         }
     }
