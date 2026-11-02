@@ -1167,6 +1167,26 @@ fn adapter_rejects_mismatched_axes_and_rolls_back() {
     assert!(builder.producers().is_empty());
     assert_eq!(builder.channel_ids().count(), 0);
 
+    // Same dt and geometry, but the bundle claims physical time: the export
+    // only states a sampling convention, so joining would overclaim.
+    let physical = Timebase {
+        dt_seconds: rate.meta.dt_seconds,
+        convention: TimeConvention::Physical,
+    };
+    let mut builder = BundleBuilder::new(
+        physical,
+        Dimensions {
+            n_steps: 64,
+            n_neurons: 8,
+        },
+    )
+    .unwrap();
+    assert_invalid(
+        builder.contribute(&AxonExportAdapter::new(&rate)),
+        "claims \"physical\" time",
+    );
+    assert!(builder.producers().is_empty());
+
     // Re-contributing under the same ids is a conflict, not a silent merge.
     let mut builder = bundle_from_axon_export(&rate).unwrap();
     assert_invalid(

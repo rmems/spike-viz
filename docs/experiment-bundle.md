@@ -322,8 +322,9 @@ Notes on the mapping:
   them. It stays next to the original export.
 - Several exports can share one bundle when their axes match (for example
   rate and Poisson on the same stimulus), using
-  `AxonExportAdapter::with_ids`. Mismatched geometry or `dt_seconds` fails
-  loud.
+  `AxonExportAdapter::with_ids`. Mismatched geometry, `dt_seconds`, or
+  convention fails loud. In particular an export cannot join a bundle whose
+  timebase claims `physical` time, since the export never states that.
 
 The tests wrap every checked-in fixture, write it, reopen it, and check
 that provenance and events are unchanged. They also render

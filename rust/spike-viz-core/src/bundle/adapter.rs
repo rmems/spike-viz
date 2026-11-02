@@ -19,7 +19,8 @@ use super::BundleError;
 /// without the adapter.
 ///
 /// Implementations must check that their data matches the builder's shared
-/// timebase and dimensions and fail loud otherwise. Call adapters through
+/// timebase (`dt_seconds` **and** convention) and dimensions and fail loud
+/// otherwise. Call adapters through
 /// [`BundleBuilder::contribute`], which rolls back a failed contribution.
 pub trait BundleAdapter {
     fn contribute(&self, bundle: &mut BundleBuilder) -> Result<(), BundleError>;
@@ -43,7 +44,8 @@ pub trait BundleAdapter {
 /// | `spikes.npz` | `spike_events` channel (layout `events`) |
 ///
 /// The export's `dt_seconds` is "seconds per displayed step" and may not be
-/// encoder-owned physical time, so the wrap claims only `sampling`.
+/// encoder-owned physical time, so the wrap claims only `sampling` and
+/// refuses to join a bundle whose timebase claims `physical`.
 /// `stimulus.npy` has no time/index semantics in the export contract, so it
 /// is not converted (its presence is not invented as a channel).
 #[derive(Debug, Clone)]
@@ -137,6 +139,17 @@ impl BundleAdapter for AxonExportAdapter<'_> {
                 self.case.path.display(),
                 timebase.dt_seconds,
                 bundle.timebase().dt_seconds
+            )));
+        }
+        // The export only claims a sampling convention; joining a bundle
+        // whose axis claims physical time would overclaim its provenance.
+        if bundle.timebase().convention != timebase.convention {
+            return Err(BundleError::Invalid(format!(
+                "{}: export dt_seconds is a {:?} convention, but the bundle's timebase claims \
+                 {:?} time; the export cannot be placed on that axis without overclaiming",
+                self.case.path.display(),
+                timebase.convention.as_str(),
+                bundle.timebase().convention.as_str()
             )));
         }
         bundle.add_producer(&self.producer_id, self.producer()?)?;
