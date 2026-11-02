@@ -1,6 +1,6 @@
 //! Bundle reader ([`ExperimentBundle`]) and writer ([`BundleBuilder`]).
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs::{self, File};
 use std::io::{self, BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
@@ -347,14 +347,25 @@ impl BundleBuilder {
 
     /// Let an adapter add its producers and channels. All-or-nothing: if the
     /// adapter fails, the builder is left exactly as it was.
+    ///
+    /// Rollback records only the ids present beforehand, never payloads: the
+    /// builder's API can add producers, channels, and extensions but never
+    /// replace or remove one, so dropping the ids added during a failed
+    /// contribution restores the previous state exactly.
     pub fn contribute<A: BundleAdapter + ?Sized>(
         &mut self,
         adapter: &A,
     ) -> Result<(), BundleError> {
-        let mut staged = self.clone();
-        adapter.contribute(&mut staged)?;
-        *self = staged;
-        Ok(())
+        let producers: BTreeSet<String> = self.producers.keys().cloned().collect();
+        let channels: BTreeSet<String> = self.channels.keys().cloned().collect();
+        let extensions: BTreeSet<String> = self.extensions.keys().cloned().collect();
+        let result = adapter.contribute(self);
+        if result.is_err() {
+            self.producers.retain(|id, _| producers.contains(id));
+            self.channels.retain(|id, _| channels.contains(id));
+            self.extensions.retain(|key, _| extensions.contains(key));
+        }
+        result
     }
 
     /// The manifest [`BundleBuilder::write`] will emit.

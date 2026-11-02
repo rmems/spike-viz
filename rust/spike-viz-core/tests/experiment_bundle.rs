@@ -11,9 +11,10 @@ use std::path::{Path, PathBuf};
 use common::*;
 use serde_json::{json, Value};
 use spike_viz_core::bundle::{
-    bundle_from_axon_export, AxonExportAdapter, BundleBuilder, BundleError, ChannelKind,
-    ChannelLayout, ChannelSpec, Columns, Compatibility, Dimensions, ExperimentBundle, LayoutKind,
-    Producer, Series, TimeAxis, TimeConvention, Timebase, BUNDLE_FORMAT, BUNDLE_MANIFEST_FILE,
+    bundle_from_axon_export, AxonExportAdapter, BundleAdapter, BundleBuilder, BundleError,
+    ChannelKind, ChannelLayout, ChannelSpec, Columns, Compatibility, Dimensions, ExperimentBundle,
+    LayoutKind, Producer, Series, TimeAxis, TimeConvention, Timebase, BUNDLE_FORMAT,
+    BUNDLE_MANIFEST_FILE,
 };
 use spike_viz_core::{load_axon_export, render_raster, SpikeEvents};
 
@@ -1263,4 +1264,33 @@ fn adapter_matches_a_literal_timebase_against_parsed_meta() {
     let mut builder = BundleBuilder::new(timebase, dims).unwrap();
     builder.contribute(&AxonExportAdapter::new(&case)).unwrap();
     assert!(builder.channel_ids().any(|id| id == "spikes"));
+}
+
+/// A third-party adapter that adds a producer, a channel, and an extension,
+/// then fails: the builder must come back unchanged.
+struct FailsHalfway;
+
+impl BundleAdapter for FailsHalfway {
+    fn contribute(&self, bundle: &mut BundleBuilder) -> Result<(), BundleError> {
+        bundle.add_producer("partial", Producer::new("example-partial"))?;
+        bundle.add_document(
+            "partial_doc",
+            spec(ChannelKind::Diagnostics, "partial"),
+            json!({"half": true}),
+        )?;
+        bundle.add_extension("example.org/partial", json!(1))?;
+        Err(BundleError::Invalid("source ran out of data".into()))
+    }
+}
+
+#[test]
+fn failed_contribution_rolls_back_everything_it_added() {
+    let mut builder = multi_channel_builder();
+    let before = builder.manifest();
+    assert_invalid(builder.contribute(&FailsHalfway), "ran out of data");
+    assert_eq!(builder.manifest(), before);
+    // The ids it used are free again: nothing half-added lingers.
+    builder
+        .add_producer("partial", Producer::new("example-partial"))
+        .unwrap();
 }
