@@ -338,6 +338,9 @@ use spike_viz_core::bundle::{bundle_from_axon_export, ChannelKind, ExperimentBun
 use spike_viz_core::load_axon_export;
 
 let case = load_axon_export("fixtures/axon-encoder/rate/shared_sine_v1")?;
+// write() needs the parent directory; the target must be absent or empty
+// (remove out/rate_bundle before running this again).
+std::fs::create_dir_all("out")?;
 bundle_from_axon_export(&case)?.write("out/rate_bundle")?;
 
 let bundle = ExperimentBundle::open("out/rate_bundle")?;
