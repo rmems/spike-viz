@@ -13,6 +13,12 @@
 //! Fail loud, never invent spikes: a missing or invalid export raises
 //! [`SpikeIOError`] rather than returning empty activity.
 //!
+//! The [`bundle`] module defines the versioned experiment bundle: the
+//! language-neutral artifact contract through which several producer crates
+//! contribute channels (spikes, state/modulator traces, topology, metrics,
+//! telemetry, ...), with the axon-encoder export wrapped as one producer
+//! (see `docs/experiment-bundle.md`).
+//!
 //! # Example
 //!
 //! Render the checked-in golden fixture without a GPU:
@@ -40,6 +46,7 @@
 //!
 //! [axon-encoder]: https://github.com/Limen-Neural/axon-encoder
 
+pub mod bundle;
 mod error;
 mod events;
 mod export;

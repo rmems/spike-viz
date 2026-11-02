@@ -23,6 +23,11 @@ the upstream export example; no Python-side encoding is involved.
 
 Schema details: [schema.md](schema.md). Charter: [CHARTER.md](CHARTER.md).
 
+To combine an export with channels from other producers (state traces,
+modulators, topology, telemetry, ...), the Rust core wraps it into a
+versioned experiment bundle without losing provenance; see
+[experiment-bundle.md](experiment-bundle.md#wrapping-the-axon-encoder-export-26).
+
 ## Layout
 
 ```text

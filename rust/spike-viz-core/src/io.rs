@@ -103,7 +103,7 @@ where
 
 /// Read an index array (`t` or `neuron_id`) into `i64` without silent
 /// truncation, mirroring the Python `_as_int64_indices` rules.
-fn read_index_array<R: std::io::Read>(
+pub(crate) fn read_index_array<R: std::io::Read>(
     npy: NpyFile<R>,
     name: &str,
 ) -> Result<Vec<i64>, SpikeIOError> {

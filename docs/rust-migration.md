@@ -33,8 +33,9 @@ rust/spike-viz-core/       # the reusable Rust library + thin CLI
   src/export.rs            # AxonExportCase: case directory loader
   src/render.rs            # sparse_to_dense + CPU raster + PNG encode
   src/report.rs            # SemanticReport (parity bridge payload)
+  src/bundle/              # versioned experiment bundle + adapter interface (#31)
   src/bin/spike-viz.rs     # `spike-viz render` CLI
-  tests/                   # contract, loader, raster, report, CLI tests
+  tests/                   # contract, loader, raster, report, CLI, bundle tests
 ```
 
 Python (`src/spike_viz/`) and Rust coexist during parity work; no Python
@@ -67,6 +68,10 @@ Still Python-only (port in later issues, one concern per issue):
 Non-goals for this migration step (unchanged from the charter): no sibling
 adapters to other ecosystem crates, no live UI, no encoder/neuron/plasticity
 semantics, no Python deletion, no crates.io publishing.
+
+The versioned experiment bundle (#31, Rust-only) defines how sibling crates
+contribute channels and the adapter rule they follow; it adds no sibling
+adapter itself. Spec: [experiment-bundle.md](experiment-bundle.md).
 
 ## Parity gates
 

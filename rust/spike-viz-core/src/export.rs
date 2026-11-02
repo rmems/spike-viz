@@ -60,29 +60,7 @@ pub fn load_axon_export<P: AsRef<Path>>(case_dir: P) -> Result<AxonExportCase, S
     let spikes_path = root.join("spikes.npz");
     let events = load_sparse(&spikes_path)?;
 
-    if !events.is_empty() {
-        let t_min = events.t().iter().min().expect("non-empty");
-        let t_max = events.t().iter().max().expect("non-empty");
-        // Compare in u64: `meta.n_steps` is unbounded above i64::MAX, and a
-        // wrapping `as i64` cast would reject valid times for huge geometry.
-        // The u64 cast is sound because t_min >= 0 is checked first.
-        if *t_min < 0 || (*t_max as u64) >= meta.n_steps {
-            return Err(SpikeIOError::Invalid(format!(
-                "{}: t out of range for n_steps={} (min={t_min}, max={t_max})",
-                spikes_path.display(),
-                meta.n_steps
-            )));
-        }
-        let n_min = events.neuron_id().iter().min().expect("non-empty");
-        let n_max = events.neuron_id().iter().max().expect("non-empty");
-        if *n_min < 0 || (*n_max as u64) >= meta.n_neurons {
-            return Err(SpikeIOError::Invalid(format!(
-                "{}: neuron_id out of range for n_neurons={} (min={n_min}, max={n_max})",
-                spikes_path.display(),
-                meta.n_neurons
-            )));
-        }
-    }
+    check_event_bounds(&events, meta.n_steps, meta.n_neurons, &spikes_path)?;
 
     let stimulus_path = {
         let candidate = root.join("stimulus.npy");
@@ -101,6 +79,42 @@ pub fn load_axon_export<P: AsRef<Path>>(case_dir: P) -> Result<AxonExportCase, S
         meta_path,
         stimulus_path,
     })
+}
+
+/// Bounds-check events against `(n_steps, n_neurons)` geometry: `t` in
+/// `[0, n_steps)`, `neuron_id` in `[0, n_neurons)`. Shared by the export
+/// loader and the experiment bundle reader/writer.
+pub(crate) fn check_event_bounds(
+    events: &SpikeEvents,
+    n_steps: u64,
+    n_neurons: u64,
+    spikes_path: &Path,
+) -> Result<(), SpikeIOError> {
+    if events.is_empty() {
+        return Ok(());
+    }
+    let t_min = events.t().iter().min().expect("non-empty");
+    let t_max = events.t().iter().max().expect("non-empty");
+    // Compare in u64: `n_steps` is unbounded above i64::MAX, and a
+    // wrapping `as i64` cast would reject valid times for huge geometry.
+    // The u64 cast is sound because t_min >= 0 is checked first.
+    if *t_min < 0 || (*t_max as u64) >= n_steps {
+        return Err(SpikeIOError::Invalid(format!(
+            "{}: t out of range for n_steps={} (min={t_min}, max={t_max})",
+            spikes_path.display(),
+            n_steps
+        )));
+    }
+    let n_min = events.neuron_id().iter().min().expect("non-empty");
+    let n_max = events.neuron_id().iter().max().expect("non-empty");
+    if *n_min < 0 || (*n_max as u64) >= n_neurons {
+        return Err(SpikeIOError::Invalid(format!(
+            "{}: neuron_id out of range for n_neurons={} (min={n_min}, max={n_max})",
+            spikes_path.display(),
+            n_neurons
+        )));
+    }
+    Ok(())
 }
 
 /// Expand a leading `~` / `~/` to `$HOME`, like Python's `expanduser` for
