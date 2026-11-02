@@ -53,6 +53,7 @@ pytest -q
 |-----|---------|
 | [docs/CHARTER.md](docs/CHARTER.md) | Purpose, truth/paint split, non-goals |
 | [docs/rust-migration.md](docs/rust-migration.md) | Rust-first core state, layout, parity gates |
+| [docs/experiment-bundle.md](docs/experiment-bundle.md) | Versioned multi-channel experiment bundle + adapter rule (Rust core) |
 | [docs/schema.md](docs/schema.md) | Sparse/dense spike schema |
 | [docs/axon-encoder-export.md](docs/axon-encoder-export.md) | Export layout + golden fixtures |
 | [docs/encoder-gallery.md](docs/encoder-gallery.md) | Seven-encoder gallery on one shared stimulus (Phase pending) |

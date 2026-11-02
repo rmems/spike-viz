@@ -15,7 +15,7 @@ Run from the repo root inside a venv. "Verified" means it ran successfully in a 
 | `python -c "import spike_viz; print(spike_viz.__version__)"` | verified |
 | `python -c "from spike_viz import load_axon_export; print(load_axon_export('fixtures/axon-encoder/rate/tiny_synthetic').meta['encoder'])"` | verified |
 | `pytest -q -rs` | verified: 177 passed, 2 skipped (CUDA) |
-| `cargo test --workspace` (from the repo root) | verified: 101 passed (Rust core; CPU-only, no CUDA needed) |
+| `cargo test --workspace` (from the repo root) | verified: 159 passed (Rust core incl. experiment bundle; CPU-only, no CUDA needed) |
 | `pytest tests/test_rust_parity.py -q` | verified: 4 passed (renders the checked-in rate fixtures with the Rust CLI; skips cleanly without `cargo`) |
 | CUDA-marked tests (`tests/test_cuda.py`, one case in `tests/test_bloom.py`) | not run here (no GPU); they skip cleanly |
 | `scripts/generate_fixtures.sh`, `scripts/generate_gain_fixtures.sh` | not run here (regenerate fixtures from axon-encoder; need the Rust toolchain and an axon-encoder checkout) |
@@ -32,6 +32,7 @@ Before claiming done, follow the gate in `REVIEW.md`.
 - `src/spike_viz/caption.py`: deterministic provenance captions from export metadata.
 - `src/spike_viz/hero.py`, `gain_triptych.py`, `gain_captions.py`, `direction_ring.py`: provenance-pinned stills (Rate vs Poisson hero, gain triptych, preferred-direction ring).
 - `rust/spike-viz-core/`: Rust-first core (workspace member; lib + `spike-viz` CLI) — export-contract load, CPU raster, PNG, `SemanticReport` parity bridge. Python stays the reference until the parity gates pass (see `docs/rust-migration.md`).
+- `rust/spike-viz-core/src/bundle/`: versioned experiment bundle (`bundle.json` + per-channel payloads), schema-compatibility rules, `BundleAdapter` interface, and the axon-export wrap. Spec: `docs/experiment-bundle.md`.
 - `fixtures/axon-encoder/<encoder>/<case>/`: golden exports (`meta.json`, `spikes.npz`, optional `stimulus.npy`). Layout contract is in `docs/axon-encoder-export.md`.
 - `tests/`: CPU pytest suite; `tests/conftest.py` skips `cuda`-marked tests when no GPU is present.
 - `scripts/`: fixture generation and packing helpers (`pack_axon_export.py`, `make_tiny_synthetic_fixture.py`, `make_tiny_fractional_amp_fixture.py`, `axon_gain_export.patch`).
