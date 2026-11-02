@@ -258,6 +258,10 @@ Version 1.0 defines no `requires` features.
   write never leaves a directory that opens as a bundle.
 - Output is deterministic: sorted JSON keys and fixed archive timestamps
   make two writes of the same bundle byte-identical.
+- Floats round-trip bit-exactly: the writer emits the shortest decimal
+  that reads back as the same `f64`, and the reader parses JSON floats
+  correctly rounded (serde_json `float_roundtrip`). Comparing `dt_seconds`
+  across bundles and exports is therefore an exact equality check.
 - `write` reopens the result through the reader before returning it.
 
 ## Adapter rule

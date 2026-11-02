@@ -15,7 +15,7 @@ Run from the repo root inside a venv. "Verified" means it ran successfully in a 
 | `python -c "import spike_viz; print(spike_viz.__version__)"` | verified |
 | `python -c "from spike_viz import load_axon_export; print(load_axon_export('fixtures/axon-encoder/rate/tiny_synthetic').meta['encoder'])"` | verified |
 | `pytest -q -rs` | verified: 177 passed, 2 skipped (CUDA) |
-| `cargo test --workspace` (from the repo root) | verified: 159 passed (Rust core incl. experiment bundle; CPU-only, no CUDA needed) |
+| `cargo test --workspace` (from the repo root) | verified: 161 passed (Rust core incl. experiment bundle; CPU-only, no CUDA needed) |
 | `pytest tests/test_rust_parity.py -q` | verified: 4 passed (renders the checked-in rate fixtures with the Rust CLI; skips cleanly without `cargo`) |
 | CUDA-marked tests (`tests/test_cuda.py`, one case in `tests/test_bloom.py`) | not run here (no GPU); they skip cleanly |
 | `scripts/generate_fixtures.sh`, `scripts/generate_gain_fixtures.sh` | not run here (regenerate fixtures from axon-encoder; need the Rust toolchain and an axon-encoder checkout) |

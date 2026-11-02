@@ -12,7 +12,9 @@ publish = false
 npyz = { version = "0.8", features = ["npz"] }
 png = "0.17"
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+# float_roundtrip: parse JSON floats correctly rounded (the default parser is
+# best-effort), so dt_seconds read from meta.json / bundle.json is bit-exact.
+serde_json = { version = "1", features = ["float_roundtrip"] }
 thiserror = "2"
 
 [lib]

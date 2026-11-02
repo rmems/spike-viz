@@ -1218,3 +1218,41 @@ fn malformed_export_version_fails_loud() {
     });
     assert_invalid(bundle_from_axon_export(&case), "axon_encoder_version");
 }
+
+/// A timestep whose shortest decimal form serde_json's default
+/// (best-effort) float parser does not read back bit-exactly; the crate
+/// enables `float_roundtrip` so every JSON float parses correctly rounded.
+const AWKWARD_DT: f64 = 7.753519050239737e-8;
+
+#[test]
+fn dt_seconds_round_trips_bit_exactly() {
+    let timebase = Timebase {
+        dt_seconds: AWKWARD_DT,
+        convention: TimeConvention::Physical,
+    };
+    let mut builder = BundleBuilder::new(timebase, dims()).unwrap();
+    builder.add_producer("p", Producer::new("example")).unwrap();
+    let bundle = builder.write(scratch("awkward-dt").join("bundle")).unwrap();
+    assert_eq!(bundle.timebase().dt_seconds.to_bits(), AWKWARD_DT.to_bits());
+}
+
+#[test]
+fn adapter_matches_a_literal_timebase_against_parsed_meta() {
+    // meta.json carries the dt as JSON text; the bundle axes come from a
+    // Rust literal. Correctly rounded parsing makes them the same f64.
+    let case = edited_case("wrap-awkward-dt", |meta| {
+        meta["dt_seconds"] = json!(AWKWARD_DT);
+    });
+    assert_eq!(case.meta.dt_seconds.to_bits(), AWKWARD_DT.to_bits());
+    let timebase = Timebase {
+        dt_seconds: AWKWARD_DT,
+        convention: TimeConvention::Sampling,
+    };
+    let dims = Dimensions {
+        n_steps: 2,
+        n_neurons: 2,
+    };
+    let mut builder = BundleBuilder::new(timebase, dims).unwrap();
+    builder.contribute(&AxonExportAdapter::new(&case)).unwrap();
+    assert!(builder.channel_ids().any(|id| id == "spikes"));
+}
